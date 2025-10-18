@@ -1,35 +1,62 @@
 import pygame
 
-# Khai báo kích thước màn hình
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 800
 
-# Khai báo màu sắc
+# ==============================
+# ⚙️ Cấu hình cơ bản
+
+
+# ==============================
+SCREEN_WIDTH = 900
+SCREEN_HEIGHT = 850
+
+
+# ==============================
+# 🎨 Màu sắc
+# ==============================
 WHITE = (255, 255, 255)
-BLUE = (0, 0, 255)
-RED = (255, 0, 0)
 BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+BLUE = (0, 128, 255)
 GREEN = (0, 255, 0)
+BG_COLOR = (230, 210, 170)
 
-# Khai báo kích thước ô cờ
-CELL_SIZE = 60
 
-# Kích thước bàn cờ
-BOARD_WIDTH = 8 * CELL_SIZE
-BOARD_HEIGHT = 9 * CELL_SIZE
+# ==============================
+# ♟️ Bàn cờ (9 cột × 10 hàng)
+# ==============================
+BOARD_COLS = 9
+BOARD_ROWS = 10
+CELL_SIZE = 65   # Khoảng cách giữa hai giao điểm (điều chỉnh cho khớp ảnh)
 
-# Tính toán vị trí bắt đầu vẽ bàn cờ
+
+# Kích thước bàn cờ tính theo giao điểm (không phải số ô)
+BOARD_WIDTH = (BOARD_COLS - 1) * CELL_SIZE
+BOARD_HEIGHT = (BOARD_ROWS - 1) * CELL_SIZE
+
+
+# Vị trí bàn cờ (tọa độ góc trên bên trái trên màn hình)
 BOARD_X = (SCREEN_WIDTH - BOARD_WIDTH) // 2
-BOARD_Y = (SCREEN_HEIGHT - BOARD_HEIGHT) // 2
+BOARD_Y = (SCREEN_HEIGHT - BOARD_HEIGHT) // 2 - 20
+# Offset để dịch hệ toạ độ ảo cho khớp với lưới thật
+GRID_OFFSET_X = 0  
+GRID_OFFSET_Y = 3
 
-# --------- Màu nền bàn cờ ---------
-BG_COLOR = (230, 210, 170)     
-BROWN = (180, 130, 70)
-DARK_BROWN = (100, 60, 30)
-LIGHT_YELLOW = (245, 230, 180)
-LIGHT_BROWN = (230, 190, 140)
-LIGHT_BLUE = (200, 220, 250)
 
-# --------- Màu nền quân ---------
+# ==============================
+# 🎯 Tùy chọn hiển thị lưới ảo (để căn chỉnh)
+# ==============================
+SHOW_GRID = False   # ⚙️ Đặt False khi đã căn chuẩn
+
+
+# ==============================
+# 🧩 Điều chỉnh vị trí quân (nếu cần căn mịn)
+# ==============================
+PIECE_OFFSET_X = 0  # chỉ dùng khi quân cờ hơi lệch (± vài pixel)
+PIECE_OFFSET_Y = 0
+
+
+# ==============================
+# 🎭 Màu nền quân cờ
+# ==============================
 RED_BG = (255, 220, 220)
-BLACK_BG = (220, 220, 220)
+BLACK_BG = (230, 230, 230)
