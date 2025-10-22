@@ -270,44 +270,48 @@ def setting(screen, sound: SoundManager):
 # =========================
 # CHẾ ĐỘ CHƠI (VS AI / 2P) – phục vụ cho main và xd
 # =========================
+        # Kết thúc → màn hình kết quả + lựa chọn
 def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: int | None):
     """
     Chạy 1 ván:
       - Đỏ luôn đi trước, Đen đi sau.
-      - Nếu kết thúc: hiển thị Thắng/Thua + chọn 'Chơi tiếp' hoặc 'Về màn hình chính'.
-      - Nếu 'Chơi tiếp': người thua = ĐỎ và đi trước ván sau.
+      - Nếu kết thúc: hiển thị Thắng/Thua + chọn 'New game' hoặc 'Back to Main Menu'.
+      - Nếu 'New game': người thua = ĐỎ và đi trước ván sau.
     human_is_red: True/False khi chơi với máy; None khi 2 người chơi (cả 2 đều là human).
     ai_depth: độ sâu minimax nếu vs AI; None nếu 2 người chơi.
     Trả về: ('MENU'|'QUIT'|'AGAIN', loser_is_human_bool_or_None)
     """
     clock = pygame.time.Clock()
+
+    # UI fonts cho phần in-game (không phải Game Over)
     title_font = pygame.font.SysFont(None, 56)
     btn_font   = pygame.font.SysFont(None, 36)
     info_font  = pygame.font.SysFont(None, 28)
 
-    board = GameBoard(screen)
-    timer = TimerManager(600)  # 10 phút mỗi bên
+    board    = GameBoard(screen)
+    timer    = TimerManager(600)  # 10 phút mỗi bên
     captured = CapturedPieces(screen)
     black_pieces, red_pieces = PieceData.get_initial_pieces()
 
+    # Thiết lập AI (nếu có)
     ai = None
     if ai_depth is not None:
-        # AI là phía còn lại của human
+        # AI sẽ là phía còn lại của human
         ai = ChessAI(is_red=not human_is_red)
+    depth_default = ai_depth if ai_depth is not None else 3
 
-    red_turn = True       # Đỏ đi trước
-    selected = None
-    valid_moves = []
-    turn_count = 0
+    red_turn      = True       # Đỏ đi trước
+    selected      = None
+    valid_moves   = []
+    turn_count    = 0
 
-    # UI kết thúc
-    winner_text = ""
-    loser_text  = ""
-    loser_is_human = None
+    # Thông tin kết thúc ván
+    winner_text      = ""
+    loser_text       = ""
+    loser_is_human   = None
+    playing          = True
 
-    # vòng chơi
-    playing = True
-    while playing:
+    while True:
         # ===== EVENT =====
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -319,29 +323,29 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                 board.screen = screen
                 captured.screen = screen
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and playing:
                 sound.play_click()
                 x, y = pygame.mouse.get_pos()
 
-                # 👉 Tăng vùng click: làm tròn tọa độ thay vì chia nguyên
+                # Tăng độ "dễ click": làm tròn về ô gần nhất
                 gx = round((x - config.BOARD_X) / config.CELL_SIZE)
                 gy = round((y - config.BOARD_Y) / config.CELL_SIZE)
 
-                # Bỏ qua nếu click ngoài bàn cờ
+                # Ngoài bàn cờ thì bỏ
                 if gx < 0 or gx >= 9 or gy < 0 or gy >= 10:
                     continue
 
-                # Nếu có AI: chỉ cho thao tác khi là lượt của người
+                # Nếu có AI: chỉ thao tác khi là lượt của người
                 if ai is not None:
                     is_human_turn = (human_is_red and red_turn) or ((not human_is_red) and (not red_turn))
                     if not is_human_turn:
                         continue
 
-                # Xác định tập quân theo lượt
+                # Tập quân theo lượt
                 pieces = red_pieces if red_turn else black_pieces
                 other  = black_pieces if red_turn else red_pieces
 
-                # Kiểm tra chọn quân hoặc đi quân
+                # Chọn quân hoặc đi quân
                 if (gx, gy) in pieces:
                     selected = (gx, gy)
                     valid_moves = MoveValidator.generate_valid_moves(
@@ -353,57 +357,65 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                         captured_piece = other.pop((gx, gy))
                         captured.add_captured_piece(captured_piece, red_turn)
                         sound.play_capture(captured_piece)
-                        # Kết thúc nếu ăn vua
+
+                        # Ăn vua -> kết thúc
                         if captured_piece in ["將", "帥"]:
-                            if captured_piece == "將":
+                            if captured_piece == "將":  # ăn Vua đen
                                 winner_text = "YOU WIN"
                                 loser_text  = "YOU LOSE"
                                 loser_is_human = (ai is None) or (not human_is_red)
-                            else:
-                                winner_text = "YOU WIN"
+                            else:                        # ăn Soái đỏ
+                                winner_text = "YOU WIN" if not red_turn else "YOU WIN"
+                                # ở đây vẫn hiển thị YOU WIN / YOU LOSE
                                 loser_text  = "YOU LOSE"
                                 loser_is_human = (ai is None) or (human_is_red)
-                            pieces[(gx, gy)] = pieces.pop(selected)  # để hiển thị cuối
+                            pieces[(gx, gy)] = pieces.pop(selected)
                             playing = False
-                            break
+                        else:
+                            # Di chuyển bình thường sau khi ăn
+                            pieces[(gx, gy)] = pieces.pop(selected)
+                            selected = None
+                            valid_moves = []
+                            red_turn = not red_turn
+                            timer.switch_turn()
+                            turn_count += 1
+                            continue  # quay lại loop
 
-                    # Di chuyển
-                    pieces[(gx, gy)] = pieces.pop(selected)
-                    selected = None
-                    valid_moves = []
-                    red_turn = not red_turn
-                    timer.switch_turn()
-                    turn_count += 1
+                    if playing:
+                        # Di chuyển thường
+                        pieces[(gx, gy)] = pieces.pop(selected)
+                        selected = None
+                        valid_moves = []
+                        red_turn = not red_turn
+                        timer.switch_turn()
+                        turn_count += 1
 
+        # ===== UPDATE TIMER =====
+        if playing:
+            timer.update_timers()
+            rt, bt = timer.get_times()
 
-        # ===== UPDATE =====
-        screen.fill((30, 20, 12))
-        timer.update_timers()
-        rt, bt = timer.get_times()
+            # Hết giờ -> kết thúc
+            if rt <= 0:
+                winner_text = "YOU WIN"      # Đen thắng vì Đỏ hết giờ
+                loser_text  = "YOU LOSE"
+                loser_is_human = (ai is None) or (human_is_red is True)
+                playing = False
+            elif bt <= 0:
+                winner_text = "YOU WIN"      # Đỏ thắng vì Đen hết giờ
+                loser_text  = "YOU LOSE"
+                loser_is_human = (ai is None) or (human_is_red is False)
+                playing = False
 
-        # Hết giờ
-        if playing and rt <= 0:
-            winner_text = "TIME'S OVER! YOU WIN"
-            loser_text  = "TIME'S OVER! YOU LOSE"
-            loser_is_human = (ai is None) or (human_is_red is True)
-            playing = False
-        elif playing and bt <= 0:
-            winner_text = "TIME'S OVER! YOU WIN"
-            loser_text  = "TIME'S OVER! YOU LOSE"
-            loser_is_human = (ai is None) or (human_is_red is False)
-            playing = False
-
-        # Lượt AI
+        # ===== LƯỢT AI =====
         if playing and ai is not None:
             is_ai_turn = (ai.is_red and red_turn) or ((not ai.is_red) and (not red_turn))
             if is_ai_turn:
-                pygame.time.delay(400)
-                depth = 3
+                pygame.time.delay(350)  # nhẹ nhàng
                 try:
-                    # nếu bạn có sửa ChessAI để nhận depth động, thay ở đây
-                    _, move = ai.minimax(red_pieces, black_pieces, depth, float('-inf'), float('inf'), ai.is_red)
+                    _, move = ai.minimax(red_pieces, black_pieces, depth_default, float('-inf'), float('inf'), ai.is_red)
                 except Exception:
-                    move = ai.get_best_move(red_pieces, black_pieces, depth=3)
+                    move = ai.get_best_move(red_pieces, black_pieces, depth=depth_default)
 
                 if move:
                     s, e = move
@@ -416,14 +428,9 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                             captured.add_captured_piece(cap, ai.is_red)
                             sound.play_capture(cap)
                             if cap in ["將", "帥"]:
-                                if cap == "帥":
-                                    winner_text = "Bên Đen thắng!"
-                                    loser_text  = "Bên Đỏ thua!"
-                                    loser_is_human = (ai is not None and human_is_red)
-                                else:
-                                    winner_text = "Bên Đỏ thắng!"
-                                    loser_text  = "Bên Đen thua!"
-                                    loser_is_human = (ai is not None and (not human_is_red))
+                                winner_text = "YOU WIN"    # phía AI thắng; UI vẫn hiển thị YOU WIN / YOU LOSE
+                                loser_text  = "YOU LOSE"
+                                loser_is_human = (ai is not None and ((human_is_red and not ai.is_red) or ((not human_is_red) and ai.is_red)))
                                 pieces[e] = pieces.pop(s)
                                 playing = False
                             else:
@@ -437,42 +444,48 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                             timer.switch_turn()
                             turn_count += 1
 
-        # Vẽ board + timer
+        # ===== VẼ BÀN + TIMER =====
         board.draw_board(black_pieces, red_pieces, valid_moves)
         captured.draw_captured_pieces()
-        board.draw_timer(rt, bt)
+        rt, bt = timer.get_times()
+        board.draw_timer(rt, bt, red_turn)
 
-        # Kết thúc → màn hình kết quả + lựa chọn
+
+        # ===== MÀN HÌNH KẾT THÚC (UI ĐẸP + NÚT) =====
         if not playing:
-        # fonts dùng helper có dấu; nếu chưa có, tạm giữ như cũ
+            # fonts dùng helper có dấu; fallback SysFont nếu thiếu
             title_font = get_vn_font(56, bold=True) if 'get_vn_font' in globals() else pygame.font.SysFont(None, 56)
             btn_font   = get_vn_font(36)            if 'get_vn_font' in globals() else pygame.font.SysFont(None, 36)
             info_font  = get_vn_font(28)            if 'get_vn_font' in globals() else pygame.font.SysFont(None, 28)
 
             # toạ độ buttons
-            btn_w, btn_h = 220, 56
+            btn_w, btn_h = 240, 56
             gap = 18
             bx = (config.SCREEN_WIDTH - btn_w) // 2
             by = (config.SCREEN_HEIGHT // 2) + 40
             rect_again = (bx, by, btn_w, btn_h)
             rect_menu  = (bx, by + btn_h + gap, btn_w, btn_h)
 
-            HIT_PAD = 12  # mở rộng vùng click
-            cooldown_ms = 500  # thời gian chờ để tránh ăn nhầm click cuối
-            start_ts = pygame.time.get_ticks()
-
-            # xoá các click cũ còn tồn trong hàng đợi
+            HIT_PAD     = 12          # mở rộng vùng click
+            cooldown_ms = 500         # tránh ăn nhầm click trước đó
+            start_ts    = pygame.time.get_ticks()
             pygame.event.clear(pygame.MOUSEBUTTONDOWN)
 
-            # vòng lặp màn hình kết thúc: chờ người chơi chọn
+            # vòng lặp màn hình kết thúc
             while True:
                 screen.fill((30, 20, 12))
+                # Title
                 draw_center_text(screen, "GAME OVER", config.SCREEN_HEIGHT // 2 - 120, title_font)
-                draw_center_text(screen, winner_text, config.SCREEN_HEIGHT // 2 - 70, btn_font, (255, 220, 120))
-                draw_center_text(screen, loser_text,  config.SCREEN_HEIGHT // 2 - 30, info_font, (220, 200, 160))
+                # YOU WIN (vàng nổi) / YOU LOSE (xám vàng)
+                draw_center_text(screen, winner_text, config.SCREEN_HEIGHT // 2 - 30, btn_font, (255, 215, 100))
 
-                hit_again = button(screen, rect_again, "New game", btn_font, hit_pad=HIT_PAD)
-                hit_menu  = button(screen, rect_menu,  "Back to Main Menu", btn_font, hit_pad=HIT_PAD)
+                # Buttons (đẹp hơn + hover)
+                # nhỏ hơn nhưng đậm hơn
+                small_bold_font = get_vn_font(20, bold=True) if 'get_vn_font' in globals() else pygame.font.SysFont(None, 28, bold=True)
+
+                hit_again = button(screen, rect_again, "New game", small_bold_font, hit_pad=HIT_PAD)
+                hit_menu  = button(screen, rect_menu,  "Back to Main Menu", small_bold_font, hit_pad=HIT_PAD)
+
 
                 now = pygame.time.get_ticks()
                 accepting_clicks = (now - start_ts) >= cooldown_ms
@@ -482,7 +495,6 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                         return "QUIT", None
 
                     elif event.type == pygame.KEYDOWN and accepting_clicks:
-                        # phím tắt: Enter = Again, Esc/M = Menu
                         if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                             return "AGAIN", bool(loser_is_human)
                         if event.key in (pygame.K_ESCAPE, pygame.K_m):
@@ -495,8 +507,12 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                         elif hit_menu.collidepoint(mx, my):
                             return "MENU", None
 
-                pygame.display.flip()
                 clock.tick(60)
+        pygame.display.flip()
+        clock.tick(60)
+
+    # Fallback an toàn nếu lỡ thoát vòng mà chưa return
+    return "MENU", None
 
                     
 
