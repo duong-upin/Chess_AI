@@ -718,7 +718,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                             return "AGAIN", bool(loser_is_human)
                         elif hit_menu.collidepoint(mx, my):
                             return "MENU", None
-
+                pygame.display.flip()
                 clock.tick(60)
         pygame.display.flip()
         clock.tick(60)
