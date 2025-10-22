@@ -6,7 +6,8 @@ class CapturedPieces:
         self.screen = screen
         self.red_captured = []  # Danh sách quân bị ăn của Đỏ
         self.black_captured = []  # Danh sách quân bị ăn của Đen
-        self.font = pygame.font.Font("E:/duong/co so AI/Chess_AI/assets/simhei.ttf",30)
+        self.font = pygame.font.Font("assets\simhei.ttf", 30)
+
 
     def add_captured_piece(self, piece, is_red):
         """Thêm quân cờ bị ăn vào danh sách"""
