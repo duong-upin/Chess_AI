@@ -10,19 +10,41 @@ from captured_pieces import CapturedPieces
 # =========================
 # UI helpers
 # =========================
+def get_vn_font(size, bold=False):
+    # Ưu tiên system fonts có hỗ trợ tiếng Việt
+    candidates = ["Segoe UI", "Arial", "Tahoma", "Roboto", "Noto Sans", "DejaVu Sans", "Verdana", "Times New Roman"]
+    for name in candidates:
+        path = pygame.font.match_font(name, bold=bold)
+        if path:
+            return pygame.font.Font(path, size)
+    # Fallback: nếu bạn có kèm font trong assets (khuyến nghị thêm 1 file)
+    try:
+        return pygame.font.Font("assets/fonts/DejaVuSans.ttf", size)
+    except Exception:
+        pass
+    # Cuối cùng mới dùng SysFont (ít chắc chắn về glyph)
+    return pygame.font.SysFont(None, size, bold=bold)
+
 def draw_center_text(screen, text, y, font, color=(255, 255, 255)):
     surf = font.render(text, True, color)
     rect = surf.get_rect(center=(config.SCREEN_WIDTH // 2, y))
     screen.blit(surf, rect)
 
-def button(screen, rect, text, font, bg=(90, 60, 20), fg=(255, 255, 255), hover_bg=(120, 80, 30)):
+def button(screen, rect, text, font, bg=(90, 60, 20), fg=(255, 255, 255),
+           hover_bg=(120, 80, 30), hit_pad=10):
     x, y, w, h = rect
     mx, my = pygame.mouse.get_pos()
-    is_hover = (x <= mx <= x + w and y <= my <= y + h)
+
+    # vùng click mở rộng thêm hit_pad px mỗi cạnh
+    hit_rect = pygame.Rect(x - hit_pad, y - hit_pad, w + hit_pad*2, h + hit_pad*2)
+    is_hover = hit_rect.collidepoint(mx, my)
+
     pygame.draw.rect(screen, hover_bg if is_hover else bg, rect, border_radius=12)
     label = font.render(text, True, fg)
     screen.blit(label, label.get_rect(center=(x + w // 2, y + h // 2)))
-    return is_hover
+
+    return hit_rect   # trả về rect mở rộng để xử lý click
+
 
 # =========================
 # ÂM THANH (đủ cho yêu cầu "setting" + "bonus ăn quân")
@@ -49,7 +71,6 @@ class SoundManager:
             return None
 
     def _load_sounds(self):
-        # bạn có thể đổi đường dẫn file theo thư mục của bạn
         self.click = self._safe_load("assets/sounds/click.wav")
         self.capture_default = self._safe_load("assets/sounds/capture_default.wav")
 
@@ -108,34 +129,10 @@ def setting(screen, sound: SoundManager):
     label_font = pygame.font.SysFont(None, 28)
     btn_font  = pygame.font.SysFont(None, 32)
 
-    # slider âm lượng
     slider_rect = pygame.Rect(180, 220, max(300, config.SCREEN_WIDTH - 360), 8)
 
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "QUIT"
-            elif event.type == pygame.VIDEORESIZE:
-                config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
-                screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
-                slider_rect.width = max(300, config.SCREEN_WIDTH - 360)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mx, my = pygame.mouse.get_pos()
-                if slider_rect.collidepoint(mx, my):
-                    ratio = (mx - slider_rect.x) / max(1, slider_rect.width)
-                    sound.set_volume(ratio)
-                    sound.play_click()
-
-        screen.fill((26, 18, 10))
-        draw_center_text(screen, "SETTINGS", 90, title_font)
-        draw_center_text(screen, f"Volume: {int(sound.volume * 100)}%", 160, label_font, (220, 200, 160))
-
-        # slider
-        pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
-        knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
-        pygame.draw.circle(screen, (200, 180, 140), (knob_x, slider_rect.y + slider_rect.height // 2), 12)
-
-        # nút
+        # TÍNH LẠI RECT CỦA NÚT MỖI FRAME (để hỗ trợ resize)
         btn_w, btn_h = 260, 56
         bx = (config.SCREEN_WIDTH - btn_w) // 2
         rect_preview = (bx, 270, btn_w, btn_h)
@@ -143,25 +140,57 @@ def setting(screen, sound: SoundManager):
         rect_toggle  = (bx, 410, btn_w, btn_h)
         rect_back    = (bx, 480, btn_w, btn_h)
 
-        button(screen, rect_preview, "Preview Click", btn_font)
-        button(screen, rect_skin, "Change Skin (placeholder)", btn_font)
-        button(screen, rect_toggle, f"Per-piece Capture Sound: {'ON' if sound.per_piece_sound else 'OFF'}", btn_font)
-        button(screen, rect_back, "Back to Main Menu", btn_font)
-
+        # ========== VÒNG SỰ KIỆN ==========
         for event in pygame.event.get():
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            HIT_PAD = 12  # nới vùng click nút ~12px mỗi cạnh
+            if event.type == pygame.QUIT:
+                return "QUIT"
+
+            
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-            if pygame.Rect(rect_preview).collidepoint(mx, my):
-                sound.play_click()
-            elif pygame.Rect(rect_skin).collidepoint(mx, my):
-                # chỗ này để TODO: mở popup chọn ảnh/skin
-                sound.play_click()
-            elif pygame.Rect(rect_toggle).collidepoint(mx, my):
-                sound.per_piece_sound = not sound.per_piece_sound
-                sound.play_click()
-            elif pygame.Rect(rect_back).collidepoint(mx, my):
-                sound.play_click()
-                return "MENU"
+
+                # Slider: nới hitbox theo chiều dọc để dễ bấm
+                slider_hit = slider_rect.inflate(0, 24)
+                if slider_hit.collidepoint(mx, my):
+                    ratio = (mx - slider_rect.x) / max(1, slider_rect.width)
+                    ratio = max(0.0, min(1.0, ratio))  # clamp 0..1
+                    sound.set_volume(ratio)
+                    sound.play_click()
+
+                # Preview
+                elif pygame.Rect(rect_preview).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                    sound.play_click()
+
+                # Skin placeholder
+                elif pygame.Rect(rect_skin).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                    sound.play_click()
+
+                # Toggle per-piece sound
+                elif pygame.Rect(rect_toggle).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                    sound.per_piece_sound = not sound.per_piece_sound
+                    sound.play_click()
+
+                # Back to menu
+                elif pygame.Rect(rect_back).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                    sound.play_click()
+                    return "MENU"
+
+        # ========== VẼ UI ==========
+        screen.fill((26, 18, 10))
+        draw_center_text(screen, "SETTINGS", 90, title_font)
+        draw_center_text(screen, f"Volume: {int(sound.volume * 100)}%", 160, label_font, (220, 200, 160))
+
+        pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
+        knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
+        pygame.draw.circle(screen, (200, 180, 140), (knob_x, slider_rect.y + slider_rect.height // 2), 12)
+
+        # Vẽ nút + lấy hitbox mở rộng (vd: 12px)
+        hit_preview = button(screen, rect_preview, "Preview Click", btn_font, hit_pad=12)
+        hit_skin    = button(screen, rect_skin, "Change Skin", btn_font, hit_pad=12)
+        hit_toggle  = button(screen, rect_toggle, f"Capture Sound: {'ON' if sound.per_piece_sound else 'OFF'}", btn_font, hit_pad=12)
+        hit_back    = button(screen, rect_back, "Back to Main Menu", btn_font, hit_pad=12)
 
         pygame.display.flip()
         clock.tick(60)
@@ -211,16 +240,24 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return "QUIT", None
+
             elif event.type == pygame.VIDEORESIZE:
                 config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
                 screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
                 board.screen = screen
                 captured.screen = screen
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 sound.play_click()
                 x, y = pygame.mouse.get_pos()
-                gx = (x - config.BOARD_X) // config.CELL_SIZE
-                gy = (y - config.BOARD_Y) // config.CELL_SIZE
+
+                # 👉 Tăng vùng click: làm tròn tọa độ thay vì chia nguyên
+                gx = round((x - config.BOARD_X) / config.CELL_SIZE)
+                gy = round((y - config.BOARD_Y) / config.CELL_SIZE)
+
+                # Bỏ qua nếu click ngoài bàn cờ
+                if gx < 0 or gx >= 9 or gy < 0 or gy >= 10:
+                    continue
 
                 # Nếu có AI: chỉ cho thao tác khi là lượt của người
                 if ai is not None:
@@ -232,7 +269,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                 pieces = red_pieces if red_turn else black_pieces
                 other  = black_pieces if red_turn else red_pieces
 
-                # (Chế độ 2 người) ép lượt chẵn = đỏ, lẻ = đen (đã bảo đảm bằng red_turn/turn_count)
+                # Kiểm tra chọn quân hoặc đi quân
                 if (gx, gy) in pieces:
                     selected = (gx, gy)
                     valid_moves = MoveValidator.generate_valid_moves(
@@ -265,6 +302,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                     red_turn = not red_turn
                     timer.switch_turn()
                     turn_count += 1
+
 
         # ===== UPDATE =====
         screen.fill((30, 20, 12))
@@ -349,20 +387,26 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
             rect_again = (bx, by, btn_w, btn_h)
             rect_menu  = (bx, by + btn_h + gap, btn_w, btn_h)
 
-            button(screen, rect_again, "Chơi tiếp", btn_font)
-            button(screen, rect_menu,  "Về màn hình chính", btn_font)
+            HIT_PAD = 12  # mở rộng vùng click
+            hit_again = button(screen, rect_again, "Chơi tiếp", btn_font, hit_pad=HIT_PAD)
+            hit_menu  = button(screen, rect_menu,  "Về màn hình chính", btn_font, hit_pad=HIT_PAD)
 
-            if pygame.mouse.get_pressed()[0]:
-                mx, my = pygame.mouse.get_pos()
-                if pygame.Rect(rect_again).collidepoint(mx, my):
-                    # quy tắc: người thua = ĐỎ và đi trước
-                    return "AGAIN", bool(loser_is_human)
-                if pygame.Rect(rect_menu).collidepoint(mx, my):
-                    return "MENU", None
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return "QUIT", None
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+                    if hit_again.collidepoint(mx, my):
+                        # quy tắc: người thua = ĐỎ và đi trước
+                        return "AGAIN", bool(loser_is_human)
+                    elif hit_menu.collidepoint(mx, my):
+                        return "MENU", None
 
-        pygame.display.flip()
-        pygame.time.delay(16)
-        clock.tick(60)
+            pygame.display.flip()
+            clock.tick(60)
+
+            
+
 
 # =========================
 # MÀN HÌNH CHÍNH "xd" (đúng yêu cầu)
@@ -374,75 +418,89 @@ def xd(screen, sound: SoundManager):
     title_font = pygame.font.SysFont(None, 56)
     btn_font   = pygame.font.SysFont(None, 36)
     info_font  = pygame.font.SysFont(None, 26)
+    mini_font  = pygame.font.SysFont(None, 22)
 
-    # cấu hình đơn giản cho vs AI: chọn bên và độ khó ngay trong màn hình này
     human_is_red = True
-    ai_depth = 3  # mặc định
+    ai_depth = 3
+    HIT_PAD = 14
 
     while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "QUIT", None, None
-            elif event.type == pygame.VIDEORESIZE:
-                config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
-                screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
-
         screen.fill((30, 20, 12))
         draw_center_text(screen, "CHINESE CHESS", config.SCREEN_HEIGHT // 2 - 160, title_font)
-        draw_center_text(screen, "Select Mode", config.SCREEN_HEIGHT // 2 - 120, info_font, (220, 200, 160))
+        draw_center_text(screen, "Select Mode",  config.SCREEN_HEIGHT // 2 - 120, info_font, (220, 200, 160))
 
         btn_w, btn_h, gap = 320, 60, 18
         bx = (config.SCREEN_WIDTH - btn_w) // 2
         by = config.SCREEN_HEIGHT // 2 - 40
 
-        rect_ai   = (bx, by, btn_w, btn_h)
-        rect_2p   = (bx, by + (btn_h + gap), btn_w, btn_h)
-        rect_guide= (bx, by + 2*(btn_h + gap), btn_w, btn_h)
-        rect_set  = (bx, by + 3*(btn_h + gap), btn_w, btn_h)
+        rect_ai    = (bx, by, btn_w, btn_h)
+        rect_2p    = (bx, by + (btn_h + gap), btn_w, btn_h)
+        rect_guide = (bx, by + 2*(btn_h + gap), btn_w, btn_h)
+        rect_set   = (bx, by + 3*(btn_h + gap), btn_w, btn_h)
 
-        button(screen, rect_ai,    "Play with AI", btn_font)
-        button(screen, rect_2p,    "2 players",      btn_font)
-        button(screen, rect_guide, "Instructions",         btn_font)
-        button(screen, rect_set,   "Settings",           btn_font)
+        # Vẽ nút và NHẬN hitbox mở rộng trước khi xử lý event
+        hit_ai    = button(screen, rect_ai,    "Play with AI",  btn_font, hit_pad=HIT_PAD)
+        hit_2p    = button(screen, rect_2p,    "2 players",     btn_font, hit_pad=HIT_PAD)
+        hit_guide = button(screen, rect_guide, "Instructions",  btn_font, hit_pad=HIT_PAD)
+        hit_set   = button(screen, rect_set,   "Settings",      btn_font, hit_pad=HIT_PAD)
 
-        # Nhánh “hiển thị chế độ đã lựa chọn”:
-        # - Nếu click: trả về loại chế độ để main xử lý → mở màn hình tương ứng
-        if pygame.mouse.get_pressed()[0]:
-            mx, my = pygame.mouse.get_pos()
-            if pygame.Rect(rect_ai).collidepoint(mx, my):
-                sound.play_click()
-                return "AI", human_is_red, ai_depth
-            if pygame.Rect(rect_2p).collidepoint(mx, my):
-                sound.play_click()
-                return "2P", None, None
-            if pygame.Rect(rect_guide).collidepoint(mx, my):
-                sound.play_click()
-                return "GUIDE", None, None
-            if pygame.Rect(rect_set).collidepoint(mx, my):
-                sound.play_click()
-                return "SETTINGS", None, None
+        # Chọn bên khi đấu AI
+        side_w, side_h = 140, 50
+        side_gap = 20
+        side_y = rect_set[1] + btn_h + 50
+        side_bx = (config.SCREEN_WIDTH - (side_w*2 + side_gap)) // 2
+        rect_side_red   = (side_bx, side_y, side_w, side_h)
+        rect_side_black = (side_bx + side_w + side_gap, side_y, side_w, side_h)
 
-        # góc nhỏ chọn nhanh BÊN & ĐỘ KHÓ cho AI ngay ở menu (không bắt buộc)
-        mini_font = pygame.font.SysFont(None, 22)
-        # Toggle bên
-        side_text = f"Your Side (AI): {'RED' if human_is_red else 'BLACK'}"
-        st = mini_font.render(side_text, True, (220, 200, 160))
-        screen.blit(st, (20, config.SCREEN_HEIGHT - 70))
-        # nhấn phím S để đổi bên
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_s]:
-            human_is_red = not human_is_red
+        hit_side_red   = button(screen, rect_side_red,   "RED SIDE",   mini_font,
+                                bg=(150, 50, 50) if human_is_red else (80, 40, 40), hit_pad=10)
+        hit_side_black = button(screen, rect_side_black, "BLACK SIDE", mini_font,
+                                bg=(50, 50, 150) if not human_is_red else (40, 40, 80), hit_pad=10)
 
-        # Độ khó (phím 1/2/3)
+        # Góc nhỏ: hiển thị độ khó
         diff_text = f"AI Difficulty (1/2/3): {ai_depth}"
         dt = mini_font.render(diff_text, True, (220, 200, 160))
         screen.blit(dt, (20, config.SCREEN_HEIGHT - 45))
+
+        # ==== EVENT LOOP (sau khi đã có hit_*) ====
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "QUIT", None, None
+
+            elif event.type == pygame.VIDEORESIZE:
+                config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
+                screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                if hit_ai.collidepoint(mx, my):
+                    sound.play_click()
+                    return "AI", human_is_red, ai_depth
+                elif hit_2p.collidepoint(mx, my):
+                    sound.play_click()
+                    return "2P", None, None
+                elif hit_guide.collidepoint(mx, my):
+                    sound.play_click()
+                    return "GUIDE", None, None
+                elif hit_set.collidepoint(mx, my):
+                    sound.play_click()
+                    return "SETTINGS", None, None
+                elif hit_side_red.collidepoint(mx, my):
+                    sound.play_click()
+                    human_is_red = True
+                elif hit_side_black.collidepoint(mx, my):
+                    sound.play_click()
+                    human_is_red = False
+
+        # phím tắt đổi độ khó
+        keys = pygame.key.get_pressed()
         if keys[pygame.K_1]: ai_depth = 2
         if keys[pygame.K_2]: ai_depth = 3
         if keys[pygame.K_3]: ai_depth = 4
 
         pygame.display.flip()
         clock.tick(60)
+
 
 # =========================
 # HƯỚNG DẪN (ngắn gọn theo yêu cầu)
@@ -454,11 +512,11 @@ def guide(screen):
     btn_font   = pygame.font.SysFont(None, 32)
 
     lines = [
-        "- Tướng/Soái (將/帥): đi 1 ô trong Cung 3x3; không được đối mặt trực tiếp.",
-        "- Sĩ (士/仕): đi chéo 1 ô, chỉ trong Cung.",
-        "- Tượng (象/相): đi chéo 2 ô (không qua sông), không bị chặn giữa.",
-        "- Xe (車/俥): đi thẳng theo hàng/cột.",
-        "- Mã (馬/傌): đi chữ L (1-2), bị chặn 'chân mã'.",
+        "- General: move 1 square in the 3x3 Palace; cannot face directly.",
+        "- Mandarin: moves one square diagonally, only in the Palace.",
+        "- Elephant: moves 2 squares diagonally (not across the river), without being blocked in the middle.",
+        "- Chariot: Moves straight along rows or columns any number of squares, as long as the path is clear.",
+        "- Horse : Moves in an “L” shape (one square horizontally or vertically, then two squares perpendicularly); can be blocked at the “horse leg.”",
         "- Pháo (炮/包/砲): đi như Xe; khi ăn phải có đúng 1 quân ngăn giữa.",
         "- Tốt/Binh (卒/兵): đi 1 ô thẳng; qua sông được đi ngang 1 ô.",
         "Chiếu hết khi đối phương không có nước đi hợp lệ và bị chiếu.",
@@ -551,4 +609,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
