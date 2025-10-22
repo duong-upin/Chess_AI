@@ -6,6 +6,7 @@ from move_validator import MoveValidator
 from board import GameBoard
 from timer_manager import TimerManager
 from captured_pieces import CapturedPieces
+import random
 
 # =========================
 # MÀN HÌNH KẾT THÚC (UI đẹp)
@@ -301,6 +302,11 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
     Trả về: ('MENU'|'QUIT'|'AGAIN', loser_is_human_bool_or_None)
     """
     clock = pygame.time.Clock()
+    # ở đầu file nhớ: import random
+    ai_thinking = False
+    ai_think_start = 0
+    ai_think_ms = 0
+
 
     # UI fonts cho phần in-game (không phải Game Over)
     title_font = pygame.font.SysFont(None, 56)
@@ -434,48 +440,58 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                 playing = False
 
         # ===== LƯỢT AI =====
+        # Lượt AI (non-blocking: đợi 3–5s rồi mới tính nước)
         if playing and ai is not None:
             is_ai_turn = (ai.is_red and red_turn) or ((not ai.is_red) and (not red_turn))
+
             if is_ai_turn:
-                pygame.time.delay(350)  # nhẹ nhàng
-                try:
-                    _, move = ai.minimax(red_pieces, black_pieces, depth_default, float('-inf'), float('inf'), ai.is_red)
-                except Exception:
-                    move = ai.get_best_move(red_pieces, black_pieces, depth=depth_default)
+                if not ai_thinking:
+                    ai_thinking = True
+                    ai_think_start = pygame.time.get_ticks()
+                    ai_think_ms = random.randint(3000, 5000)  # 3–5 giây
+                elif pygame.time.get_ticks() - ai_think_start >= ai_think_ms:
+                    # hết thời gian nghĩ → tính và thực hiện nước đi
+                    depth = ai_depth or 3
+                    try:
+                        _, move = ai.minimax(red_pieces, black_pieces, depth, float('-inf'), float('inf'), ai.is_red)
+                    except Exception:
+                        move = ai.get_best_move(red_pieces, black_pieces, depth=depth)
 
-                if move:
-                    s, e = move
-                    # khi AI di chuyển
-                    board.last_move = (s, e)
+                    ai_thinking = False  # reset
 
-
-                    pieces = red_pieces if ai.is_red else black_pieces
-                    other  = black_pieces if ai.is_red else red_pieces
-                    if s in pieces:
-                        # Ăn quân
-                        if e in other:
-                            attacker_piece = pieces[s]   # quân AI đi
-                            cap = other.pop(e)
-                            captured.add_captured_piece(cap, ai.is_red)
-                            sound.play_capture(attacker_piece)   # phát âm thanh theo quân đang ăn
-
-                            if cap in ["將", "帥"]:
-                                winner_text = "YOU WIN"    # phía AI thắng; UI vẫn hiển thị YOU WIN / YOU LOSE
-                                loser_text  = "YOU LOSE"
-                                loser_is_human = (ai is not None and ((human_is_red and not ai.is_red) or ((not human_is_red) and ai.is_red)))
-                                pieces[e] = pieces.pop(s)
-                                playing = False
+                    if move:
+                        s, e = move
+                        pieces = red_pieces if ai.is_red else black_pieces
+                        other  = black_pieces if ai.is_red else red_pieces
+                        if s in pieces:
+                            # ăn quân?
+                            if e in other:
+                                attacker_piece = pieces[s]
+                                cap = other.pop(e)
+                                captured.add_captured_piece(cap, ai.is_red)
+                                sound.play_capture(attacker_piece)
+                                if cap in ["將", "帥"]:
+                                    if cap == "帥":
+                                        winner_text = "Bên Đen thắng!"
+                                        loser_text  = "Bên Đỏ thua!"
+                                        loser_is_human = (ai is not None and human_is_red)
+                                    else:
+                                        winner_text = "Bên Đỏ thắng!"
+                                        loser_text  = "Bên Đen thua!"
+                                        loser_is_human = (ai is not None and (not human_is_red))
+                                    pieces[e] = pieces.pop(s)
+                                    playing = False
+                                else:
+                                    pieces[e] = pieces.pop(s)
+                                    red_turn = not red_turn
+                                    timer.switch_turn()
+                                    turn_count += 1
                             else:
                                 pieces[e] = pieces.pop(s)
                                 red_turn = not red_turn
                                 timer.switch_turn()
                                 turn_count += 1
-                        else:
-                            pieces[e] = pieces.pop(s)
-                            sound.play_move()   
-                            red_turn = not red_turn
-                            timer.switch_turn()
-                            turn_count += 1
+
 
         # ===== VẼ BÀN + TIMER =====
         board.draw_board(black_pieces, red_pieces, valid_moves, selected=selected)
