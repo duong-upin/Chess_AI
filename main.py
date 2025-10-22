@@ -181,7 +181,7 @@ class SoundManager:
             if s: s.set_volume(self.volume)
         for s in self.capture_map.values():
             if s: s.set_volume(self.volume)
-
+        pygame.mixer.music.set_volume(self.volume)
     # UI click (giữ để dùng cho nút menu)
     def play_click(self):
         if self.click:
@@ -220,8 +220,10 @@ def setting(screen, sound: SoundManager):
     title_font = pygame.font.SysFont(None, 50)
     label_font = pygame.font.SysFont(None, 28)
     btn_font  = pygame.font.SysFont(None, 32)
+    dragging_volume = False 
 
     slider_rect = pygame.Rect(180, 220, max(300, config.SCREEN_WIDTH - 360), 8)
+    slider_hit = slider_rect.inflate(0, 24)   # 👈 thêm dòng này
 
     while True:
         # TÍNH LẠI RECT CỦA NÚT MỖI FRAME (để hỗ trợ resize)
@@ -234,45 +236,63 @@ def setting(screen, sound: SoundManager):
 
         # ========== VÒNG SỰ KIỆN ==========
         for event in pygame.event.get():
-            HIT_PAD = 12  # nới vùng click nút ~12px mỗi cạnh
             if event.type == pygame.QUIT:
                 return "QUIT"
 
-            
+            elif event.type == pygame.VIDEORESIZE:
+                config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
+                screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+                slider_rect.width = max(300, config.SCREEN_WIDTH - 360)
+                slider_hit = slider_rect.inflate(0, 24)   # 👈 thêm dòng này
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-
-                # Slider: nới hitbox theo chiều dọc để dễ bấm
-                slider_hit = slider_rect.inflate(0, 24)
                 if slider_hit.collidepoint(mx, my):
+                    # bắt đầu kéo + cập nhật ngay
+                    dragging_volume = True
                     ratio = (mx - slider_rect.x) / max(1, slider_rect.width)
-                    ratio = max(0.0, min(1.0, ratio))  # clamp 0..1
+                    ratio = max(0.0, min(1.0, ratio))
                     sound.set_volume(ratio)
                     sound.play_click()
-
-                # Preview
-                elif pygame.Rect(rect_preview).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                elif hit_preview.collidepoint(mx, my):
                     sound.play_click()
-
-                # Skin placeholder
-                elif pygame.Rect(rect_skin).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                elif hit_skin.collidepoint(mx, my):
                     sound.play_click()
-
-                # Toggle per-piece sound
-                elif pygame.Rect(rect_toggle).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                elif hit_toggle.collidepoint(mx, my):
                     sound.per_piece_sound = not sound.per_piece_sound
                     sound.play_click()
-
-                # Back to menu
-                elif pygame.Rect(rect_back).inflate(HIT_PAD*2, HIT_PAD*2).collidepoint(mx, my):
+                elif hit_back.collidepoint(mx, my):
                     sound.play_click()
                     return "MENU"
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging_volume = False
+
+            elif event.type == pygame.MOUSEMOTION and dragging_volume:
+                mx, my = event.pos
+                ratio = (mx - slider_rect.x) / max(1, slider_rect.width)
+                ratio = max(0.0, min(1.0, ratio))
+                sound.set_volume(ratio)
+
+            elif event.type == pygame.MOUSEWHEEL:
+                # lăn chuột khi trỏ vào slider → tăng/giảm 5%
+                mx, my = pygame.mouse.get_pos()
+                if slider_hit.collidepoint(mx, my):
+                    delta = 0.05 * (1 if event.y > 0 else -1)
+                    sound.set_volume(max(0.0, min(1.0, sound.volume + delta)))
 
         # ========== VẼ UI ==========
         screen.fill((26, 18, 10))
         draw_center_text(screen, "SETTINGS", 90, title_font)
         draw_center_text(screen, f"Volume: {int(sound.volume * 100)}%", 160, label_font, (220, 200, 160))
+        pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
+        knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
+        pygame.draw.circle(
+            screen,
+            (200, 180, 140),
+            (knob_x, slider_rect.y + slider_rect.height // 2),
+            12
+        )
 
         pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
         knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
@@ -572,6 +592,15 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 # - Sau khi thao tác thì hiển thị ra màn hình chế độ đã lựa chọn
 # =========================
 def xd(screen, sound: SoundManager):
+
+    # BGM setup
+    try:
+        pygame.mixer.music.load("assets/sounds/menu_bgm.wav")
+        pygame.mixer.music.set_volume(0.4)  # âm lượng 40%
+        pygame.mixer.music.play(-1)  # loop vô hạn
+    except Exception as e:
+        print("Không thể bật nhạc nền menu:", e)
+
     clock = pygame.time.Clock()
     title_font = pygame.font.SysFont(None, 56)
     btn_font   = pygame.font.SysFont(None, 36)
@@ -723,6 +752,9 @@ def main():
 
     while True:
         mode, human_is_red, ai_depth = xd(screen, sound)
+        if mode in ("AI", "2P", "SETTINGS", "GUIDE"):
+            pygame.mixer.music.pause()
+
         if mode == "QUIT":
             break
         elif mode == "SETTINGS":
