@@ -369,6 +369,8 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                                 # ở đây vẫn hiển thị YOU WIN / YOU LOSE
                                 loser_text  = "YOU LOSE"
                                 loser_is_human = (ai is None) or (human_is_red)
+                            board.last_move = (selected, (gx, gy))
+                            
                             pieces[(gx, gy)] = pieces.pop(selected)
                             playing = False
                         else:
@@ -419,6 +421,10 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
                 if move:
                     s, e = move
+                    # khi AI di chuyển
+                    board.last_move = (s, e)
+
+
                     pieces = red_pieces if ai.is_red else black_pieces
                     other  = black_pieces if ai.is_red else red_pieces
                     if s in pieces:
@@ -445,7 +451,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                             turn_count += 1
 
         # ===== VẼ BÀN + TIMER =====
-        board.draw_board(black_pieces, red_pieces, valid_moves)
+        board.draw_board(black_pieces, red_pieces, valid_moves, selected=selected)
         captured.draw_captured_pieces()
         rt, bt = timer.get_times()
         board.draw_timer(rt, bt, red_turn)

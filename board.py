@@ -4,6 +4,7 @@ import os
 
 class GameBoard:
     def __init__(self, screen):
+        self.last_move = None  # sẽ lưu dạng: ((sx, sy), (ex, ey))
         self.screen = screen
 
         # Tìm ảnh bàn cờ (đường dẫn tương đối)
@@ -73,34 +74,57 @@ class GameBoard:
         return x, y
 
     # ----------------- vẽ bàn cờ -----------------
-    def draw_board(self, black_pieces, red_pieces, valid_moves, current_turn=None):
+    def draw_board(self, black_pieces, red_pieces, valid_moves, selected=None, current_turn=None):
         self.screen.fill(config.BG_COLOR)
         self.screen.blit(self.board_img, (config.BOARD_X, config.BOARD_Y))
 
-        # Gợi ý nước đi
-        cell = min(
-            self.board_img.get_width() / config.BOARD_COLS,
-            self.board_img.get_height() / config.BOARD_ROWS,
-        )
-        r = max(4, int(cell // 12))
+        # ✨ Vẽ vệt nước đi trước
+        self._draw_last_move_trail()
+
+        # Vẽ các nước đi hợp lệ
+        r = max(4, int(min(self.board_img.get_width() / config.BOARD_COLS,
+                        self.board_img.get_height() / config.BOARD_ROWS) // 12))
         for gx, gy in valid_moves:
             mv_px, mv_py = self.to_pixel(gx, gy)
             pygame.draw.circle(self.screen, config.GREEN, (int(mv_px), int(mv_py)), r)
 
-        # Quân đen
+        # ✨ Vẽ quân, làm mờ quân đang chọn
         for (x, y), ch in black_pieces.items():
-            self.draw_piece(x, y, config.BLACK, ch, config.BLACK_BG)
-        # Quân đỏ
+            self.draw_piece(x, y, config.BLACK, ch, config.BLACK_BG, dim=(selected == (x, y)))
         for (x, y), ch in red_pieces.items():
-            self.draw_piece(x, y, config.RED, ch, config.RED_BG)
+            self.draw_piece(x, y, config.RED, ch, config.RED_BG, dim=(selected == (x, y)))
 
+        # Hiển thị lượt
         if current_turn:
             self.draw_turn_indicator(current_turn)
+
         self.draw_grid()
-        # ❌ KHÔNG flip ở đây để tránh nhấp nháy. Flip 1 lần duy nhất ở main loop.
+
+    def _draw_last_move_trail(self):
+        if not self.last_move:
+            return
+
+        (sx, sy), (ex, ey) = self.last_move
+        x1, y1 = self.to_pixel(sx, sy)
+        x2, y2 = self.to_pixel(ex, ey)
+
+        # Màu vệt
+        trail_col = (220, 60, 60)
+
+        # Vẽ các chấm nhỏ theo đoạn đường
+        steps = max(1, int(((x1 - x2)**2 + (y1 - y2)**2)**0.5 // 22))
+        for i in range(1, steps):
+            t = i / steps
+            px = int(x1 + (x2 - x1) * t)
+            py = int(y1 + (y2 - y1) * t)
+            pygame.draw.circle(self.screen, trail_col, (px, py), 3)
+
+        # Vẽ vòng tròn ở đầu và cuối
+        pygame.draw.circle(self.screen, trail_col, (int(x1), int(y1)), 10, 2)
+        pygame.draw.circle(self.screen, trail_col, (int(x2), int(y2)), 10, 2)
 
     # ----------------- vẽ quân -----------------
-    def draw_piece(self, x, y, color, text, bg_color):
+    def draw_piece(self, x, y, color, text, bg_color, dim=False):
         px, py = self.to_pixel(x, y)
         center = (int(px), int(py))
 
@@ -108,17 +132,29 @@ class GameBoard:
         cell_h = self.board_img.get_height() / config.BOARD_ROWS
         radius = int(max(4, min(cell_w, cell_h) / 2 - 5))
 
-        pygame.draw.circle(self.screen, bg_color, center, radius)
-        pygame.draw.circle(self.screen, color, center, max(1, radius - 3), 3)
+        # vẽ lên surface có alpha để dễ mờ toàn bộ
+        box = int(max(cell_w, cell_h)) + 8
+        temp = pygame.Surface((box, box), pygame.SRCALPHA)
+        c = (box // 2, box // 2)
 
+        # nền + viền
+        pygame.draw.circle(temp, bg_color, c, radius)
+        pygame.draw.circle(temp, color,    c, max(1, radius - 3), 3)
+
+        # chữ
         try:
             font_size = max(12, int(min(cell_w, cell_h) * 0.5))
             font = pygame.font.SysFont("SimHei", font_size)
         except Exception:
             font = self.font
-
         glyph = font.render(text, True, color)
-        self.screen.blit(glyph, glyph.get_rect(center=center))
+        temp.blit(glyph, glyph.get_rect(center=c))
+
+        # nếu đang chọn → mờ đi
+        if dim:
+            temp.set_alpha(110)  # 0..255
+
+        self.screen.blit(temp, (center[0] - box // 2, center[1] - box // 2))
 
     # ----------------- lượt đi -----------------
     def draw_turn_indicator(self, current_turn):
