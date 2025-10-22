@@ -8,6 +8,78 @@ from timer_manager import TimerManager
 from captured_pieces import CapturedPieces
 
 # =========================
+# MÀN HÌNH KẾT THÚC (UI đẹp)
+# =========================
+def draw_game_over_ui(screen, winner_text, loser_text):
+    import pygame
+    import config
+
+    # ===== FONT =====
+    title_font = pygame.font.Font("assets/fonts/Roboto-Bold.ttf", 64)   # In đậm, to
+    sub_font   = pygame.font.Font("assets/fonts/Roboto-Regular.ttf", 32)
+    btn_font   = pygame.font.Font("assets/fonts/Roboto-Medium.ttf", 28)
+
+    # ===== MÀU =====
+    bg_color     = (30, 20, 12)
+    title_color  = (255, 215, 100)     # vàng sáng
+    sub_color    = (220, 200, 160)     # xám vàng nhẹ
+    btn_bg       = (90, 60, 20)
+    btn_hover_bg = (130, 85, 35)
+    btn_text     = (255, 255, 255)
+
+    # ===== LAYOUT =====
+    screen.fill(bg_color)
+    center_x = config.SCREEN_WIDTH // 2
+    center_y = config.SCREEN_HEIGHT // 2
+
+    # "GAME OVER"
+    game_over_surf = title_font.render("GAME OVER", True, (255, 255, 255))
+    game_over_rect = game_over_surf.get_rect(center=(center_x, center_y - 150))
+    screen.blit(game_over_surf, game_over_rect)
+
+    # Winner / Loser text
+    win_surf = title_font.render(winner_text.upper(), True, title_color)
+    win_rect = win_surf.get_rect(center=(center_x, center_y - 70))
+    screen.blit(win_surf, win_rect)
+
+    lose_surf = sub_font.render(loser_text.upper(), True, sub_color)
+    lose_rect = lose_surf.get_rect(center=(center_x, center_y - 25))
+    screen.blit(lose_surf, lose_rect)
+
+    # ===== BUTTONS =====
+    def draw_button(text, rect):
+        mx, my = pygame.mouse.get_pos()
+        is_hover = pygame.Rect(rect).collidepoint(mx, my)
+        bg = btn_hover_bg if is_hover else btn_bg
+        pygame.draw.rect(screen, bg, rect, border_radius=12)
+        label = btn_font.render(text, True, btn_text)
+        screen.blit(label, label.get_rect(center=pygame.Rect(rect).center))
+        return is_hover
+
+    btn_w, btn_h = 240, 56
+    gap = 18
+    rect_again = (center_x - btn_w // 2, center_y + 40, btn_w, btn_h)
+    rect_menu  = (center_x - btn_w // 2, center_y + 40 + btn_h + gap, btn_w, btn_h)
+
+    hover_again = draw_button("New Game", rect_again)
+    hover_menu  = draw_button("Back to Main Menu", rect_menu)
+
+    pygame.display.flip()
+
+    # ===== XỬ LÝ EVENT =====
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return "QUIT"
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if pygame.Rect(rect_again).collidepoint(mx, my):
+                return "AGAIN"
+            elif pygame.Rect(rect_menu).collidepoint(mx, my):
+                return "MENU"
+    return None
+
+
+# =========================
 # UI helpers
 # =========================
 def get_vn_font(size, bold=False):
@@ -284,12 +356,12 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                         # Kết thúc nếu ăn vua
                         if captured_piece in ["將", "帥"]:
                             if captured_piece == "將":
-                                winner_text = "Bên Đỏ thắng! Vua Đen bị ăn."
-                                loser_text  = "Bên Đen thua!"
+                                winner_text = "YOU WIN"
+                                loser_text  = "YOU LOSE"
                                 loser_is_human = (ai is None) or (not human_is_red)
                             else:
-                                winner_text = "Bên Đen thắng! Vua Đỏ bị ăn."
-                                loser_text  = "Bên Đỏ thua!"
+                                winner_text = "YOU WIN"
+                                loser_text  = "YOU LOSE"
                                 loser_is_human = (ai is None) or (human_is_red)
                             pieces[(gx, gy)] = pieces.pop(selected)  # để hiển thị cuối
                             playing = False
@@ -311,13 +383,13 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
         # Hết giờ
         if playing and rt <= 0:
-            winner_text = "Bên Đen thắng do bên Đỏ hết thời gian!"
-            loser_text  = "Bên Đỏ thua!"
+            winner_text = "TIME'S OVER! YOU WIN"
+            loser_text  = "TIME'S OVER! YOU LOSE"
             loser_is_human = (ai is None) or (human_is_red is True)
             playing = False
         elif playing and bt <= 0:
-            winner_text = "Bên Đỏ thắng do bên Đen hết thời gian!"
-            loser_text  = "Bên Đen thua!"
+            winner_text = "TIME'S OVER! YOU WIN"
+            loser_text  = "TIME'S OVER! YOU LOSE"
             loser_is_human = (ai is None) or (human_is_red is False)
             playing = False
 
@@ -372,14 +444,12 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
         # Kết thúc → màn hình kết quả + lựa chọn
         if not playing:
-            title_font = pygame.font.SysFont(None, 56)
-            btn_font   = pygame.font.SysFont(None, 36)
-            info_font  = pygame.font.SysFont(None, 28)
-            draw_center_text(screen, "VÁN ĐẤU KẾT THÚC", config.SCREEN_HEIGHT // 2 - 120, title_font)
-            draw_center_text(screen, winner_text, config.SCREEN_HEIGHT // 2 - 70, btn_font, (255, 220, 120))
-            draw_center_text(screen, loser_text,  config.SCREEN_HEIGHT // 2 - 30, info_font, (220, 200, 160))
-            draw_center_text(screen, "Chọn một tùy chọn:", config.SCREEN_HEIGHT // 2 + 10, info_font)
+        # fonts dùng helper có dấu; nếu chưa có, tạm giữ như cũ
+            title_font = get_vn_font(56, bold=True) if 'get_vn_font' in globals() else pygame.font.SysFont(None, 56)
+            btn_font   = get_vn_font(36)            if 'get_vn_font' in globals() else pygame.font.SysFont(None, 36)
+            info_font  = get_vn_font(28)            if 'get_vn_font' in globals() else pygame.font.SysFont(None, 28)
 
+            # toạ độ buttons
             btn_w, btn_h = 220, 56
             gap = 18
             bx = (config.SCREEN_WIDTH - btn_w) // 2
@@ -388,24 +458,47 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
             rect_menu  = (bx, by + btn_h + gap, btn_w, btn_h)
 
             HIT_PAD = 12  # mở rộng vùng click
-            hit_again = button(screen, rect_again, "Chơi tiếp", btn_font, hit_pad=HIT_PAD)
-            hit_menu  = button(screen, rect_menu,  "Về màn hình chính", btn_font, hit_pad=HIT_PAD)
+            cooldown_ms = 500  # thời gian chờ để tránh ăn nhầm click cuối
+            start_ts = pygame.time.get_ticks()
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "QUIT", None
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-                    if hit_again.collidepoint(mx, my):
-                        # quy tắc: người thua = ĐỎ và đi trước
-                        return "AGAIN", bool(loser_is_human)
-                    elif hit_menu.collidepoint(mx, my):
-                        return "MENU", None
+            # xoá các click cũ còn tồn trong hàng đợi
+            pygame.event.clear(pygame.MOUSEBUTTONDOWN)
 
-            pygame.display.flip()
-            clock.tick(60)
+            # vòng lặp màn hình kết thúc: chờ người chơi chọn
+            while True:
+                screen.fill((30, 20, 12))
+                draw_center_text(screen, "GAME OVER", config.SCREEN_HEIGHT // 2 - 120, title_font)
+                draw_center_text(screen, winner_text, config.SCREEN_HEIGHT // 2 - 70, btn_font, (255, 220, 120))
+                draw_center_text(screen, loser_text,  config.SCREEN_HEIGHT // 2 - 30, info_font, (220, 200, 160))
 
-            
+                hit_again = button(screen, rect_again, "New game", btn_font, hit_pad=HIT_PAD)
+                hit_menu  = button(screen, rect_menu,  "Back to Main Menu", btn_font, hit_pad=HIT_PAD)
+
+                now = pygame.time.get_ticks()
+                accepting_clicks = (now - start_ts) >= cooldown_ms
+
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        return "QUIT", None
+
+                    elif event.type == pygame.KEYDOWN and accepting_clicks:
+                        # phím tắt: Enter = Again, Esc/M = Menu
+                        if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                            return "AGAIN", bool(loser_is_human)
+                        if event.key in (pygame.K_ESCAPE, pygame.K_m):
+                            return "MENU", None
+
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and accepting_clicks:
+                        mx, my = event.pos
+                        if hit_again.collidepoint(mx, my):
+                            return "AGAIN", bool(loser_is_human)
+                        elif hit_menu.collidepoint(mx, my):
+                            return "MENU", None
+
+                pygame.display.flip()
+                clock.tick(60)
+
+                    
 
 
 # =========================
@@ -516,10 +609,11 @@ def guide(screen):
         "- Mandarin: moves one square diagonally, only in the Palace.",
         "- Elephant: moves 2 squares diagonally (not across the river), without being blocked in the middle.",
         "- Chariot: Moves straight along rows or columns any number of squares, as long as the path is clear.",
-        "- Horse : Moves in an “L” shape (one square horizontally or vertically, then two squares perpendicularly); can be blocked at the “horse leg.”",
-        "- Pháo (炮/包/砲): đi như Xe; khi ăn phải có đúng 1 quân ngăn giữa.",
-        "- Tốt/Binh (卒/兵): đi 1 ô thẳng; qua sông được đi ngang 1 ô.",
-        "Chiếu hết khi đối phương không có nước đi hợp lệ và bị chiếu.",
+        "- Horse: Moves in an “L” shape (one square horizontally or vertically, then two squares perpendicularly); can be blocked at the “horse leg.”",
+        "- Cannon: Moves like a chariot, but to capture a piece there must be exactly one piece between it and the target.",
+        "- Soldier: Moves one step forward; after crossing the river, it can also move one step sideways.",
+        "Checkmate: Occurs when the opponent has no legal move and their general is in check.",
+
     ]
 
     while True:
@@ -531,7 +625,7 @@ def guide(screen):
                 screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
 
         screen.fill((28, 20, 12))
-        draw_center_text(screen, "HƯỚNG DẪN", 90, title_font)
+        draw_center_text(screen, "Instructions", 90, title_font)
         y = 150
         for line in lines:
             surf = body_font.render(line, True, (230, 210, 180))
@@ -539,7 +633,7 @@ def guide(screen):
             y += 28
 
         rect_back = ((config.SCREEN_WIDTH - 220)//2, y + 30, 220, 56)
-        button(screen, rect_back, "Về màn hình chính", btn_font)
+        button(screen, rect_back, "Back to Main Menu", btn_font)
 
         if pygame.mouse.get_pressed()[0]:
             mx, my = pygame.mouse.get_pos()

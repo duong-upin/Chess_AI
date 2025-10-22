@@ -12,8 +12,8 @@ class GameBoard:
 
         # Các đường dẫn khả dĩ để tìm ảnh bàn cờ
         candidates = [
-            "E:/duong/co so AI/Chess_AI/assets/board.png",
-            "E:/duong/co so AI/Chess_AI/assets/board.jpg",
+            "assets/board.png",
+            "assets/board.jpg",
             os.path.join("assets", "board.png"),
             os.path.join("assets", "board.jpg"),
         ]
