@@ -51,7 +51,7 @@ SHOW_GRID = False   # ⚙️ Đặt False khi đã căn chuẩn
 # ==============================
 # 🧩 Điều chỉnh vị trí quân (nếu cần căn mịn)
 # ==============================
-PIECE_OFFSET_X = 0  # chỉ dùng khi quân cờ hơi lệch (± vài pixel)
+PIECE_OFFSET_X = 1  # chỉ dùng khi quân cờ hơi lệch (± vài pixel)
 PIECE_OFFSET_Y = 0
 
 

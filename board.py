@@ -17,6 +17,7 @@ class GameBoard:
         candidates = [
             "assets/board.png",
             "assets/board.jpg",
+            
             os.path.join("assets", "board.png"),
             os.path.join("assets", "board.jpg"),
         ]
@@ -106,7 +107,14 @@ class GameBoard:
         for gx, gy in valid_moves:
             mv_px, mv_py = self.to_pixel(gx, gy)
             pygame.draw.circle(self.screen, config.GREEN, (int(mv_px), int(mv_py)), r)
-
+        for move in valid_moves:
+            mv_px, mv_py = self.to_pixel(move[0], move[1])
+            pygame.draw.circle(
+                self.screen,
+                config.GREEN,
+                (int(mv_px), int(mv_py)),
+                max(4, int(min(self.board_img.get_width()/config.BOARD_COLS, self.board_img.get_height()/config.BOARD_ROWS) //9)),
+            )
         # ✨ Vẽ quân, làm mờ quân đang chọn
         for (x, y), ch in black_pieces.items():
             self.draw_piece(x, y, config.BLACK, ch, config.BLACK_BG, dim=(selected == (x, y)))
