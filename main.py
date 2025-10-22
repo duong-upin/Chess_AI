@@ -7,6 +7,7 @@ from board import GameBoard
 from timer_manager import TimerManager
 from captured_pieces import CapturedPieces
 import random
+import time
 
 
 def wrap_text(text, font, max_width):
@@ -503,11 +504,15 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
                         board.last_move = (selected, (gx, gy))   # ✓ trace
                         pieces[(gx, gy)] = pieces.pop(selected)
+                        board.last_move = (selected, (gx, gy))
+
                         playing = False
 
                     else:
                         # Di chuyển xong sau khi ăn
                         pieces[(gx, gy)] = pieces.pop(selected)
+                        board.last_move = (selected, (gx, gy))
+
                         board.last_move = (selected, (gx, gy))    # ✓ trace
                         selected = None
                         valid_moves = []
@@ -519,6 +524,8 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                 if playing:
                     # Di chuyển thường (không ăn)
                     pieces[(gx, gy)] = pieces.pop(selected)
+                    board.last_move = (selected, (gx, gy))
+
                     board.last_move = (selected, (gx, gy))        # ✓ trace
                     sound.play_move()                             # ← THÊM DÒNG NÀY (âm di chuyển)
                     selected = None
@@ -551,9 +558,11 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
             if is_ai_turn:
                 if not ai_thinking:
+
                     ai_thinking = True
+
                     ai_think_start = pygame.time.get_ticks()
-                    ai_think_ms = random.randint(3000, 5000)  # 3–5 giây
+                    ai_think_ms = random.randint(2000, 3000)  # 3–5 giây
                 elif pygame.time.get_ticks() - ai_think_start >= ai_think_ms:
                     # hết thời gian nghĩ → tính và thực hiện nước đi
                     depth = ai_depth or 3
@@ -566,6 +575,11 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
 
                     if move:
                         s, e = move
+                        sound.play_select()
+                        selected = s
+                        board.draw_board(black_pieces, red_pieces, [], selected=selected)
+                        pygame.display.flip()
+                        pygame.time.delay(1500)
                         pieces = red_pieces if ai.is_red else black_pieces
                         other  = black_pieces if ai.is_red else red_pieces
                         if s in pieces:
@@ -574,6 +588,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                                 attacker_piece = pieces[s]
                                 cap = other.pop(e)
                                 captured.add_captured_piece(cap, ai.is_red)
+                                board.last_move = (s, e)
                                 sound.play_capture(attacker_piece)
                                 if cap in ["將", "帥"]:
                                     if cap == "帥":
@@ -585,14 +600,22 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                                         loser_text  = "Bên Đen thua!"
                                         loser_is_human = (ai is not None and (not human_is_red))
                                     pieces[e] = pieces.pop(s)
+                                    board.last_move = (s, e)
+
+                                    
                                     playing = False
                                 else:
                                     pieces[e] = pieces.pop(s)
+                                    board.last_move = (s, e)
+
+                                    board.last_move = (s, e)
                                     red_turn = not red_turn
                                     timer.switch_turn()
                                     turn_count += 1
                             else:
                                 pieces[e] = pieces.pop(s)
+                                board.last_move = (s, e)
+
                                 red_turn = not red_turn
                                 timer.switch_turn()
                                 turn_count += 1

@@ -4,7 +4,13 @@ import os
 
 class GameBoard:
     def __init__(self, screen):
-        self.last_move = None  # sẽ lưu dạng: ((sx, sy), (ex, ey))
+        # --- TRACE SUPPORT ---
+        # Giữ tương thích: nếu code cũ gán last_move, vẫn hoạt động.
+        self.last_move = None                 # ((sx, sy), (ex, ey))
+        # Mới: lưu nhiều vệt gần nhất (để không biến mất sau 1 nước)
+        self.move_history = []                # list[ ((sx,sy),(ex,ey)) ]
+        self.max_traces   = 6                 # số vệt gần nhất sẽ vẽ
+
         self.screen = screen
 
         # Tìm ảnh bàn cờ (đường dẫn tương đối)
@@ -30,12 +36,25 @@ class GameBoard:
         # Font mặc định cho text “lượt”
         self.font = pygame.font.SysFont("SimHei", 50)
 
+    # ====== API mới để đánh dấu nước đi (khuyên dùng) ======
+    def mark_move(self, start, end):
+        """
+        Gọi sau mỗi nước đi:
+            board.mark_move((sx,sy), (ex,ey))
+        -> sẽ push vào move_history và đồng thời cập nhật last_move (tương thích).
+        """
+        if not isinstance(start, tuple) or not isinstance(end, tuple):
+            return
+        self.last_move = (start, end)
+        self.move_history.append((start, end))
+        if len(self.move_history) > self.max_traces:
+            self.move_history.pop(0)
+
     # ----------------- helpers -----------------
     def _get_font(self, size, bold=False):
         """Font UI nội bộ (không phụ thuộc get_vn_font ở main.py)."""
         try:
-            # ưu tiên vài font hay có sẵn
-            for name in ["Segoe UI", "Roboto", "Arial", "Tahoma", "Noto Sans"]:
+            for name in ["Segoe UI", "Roboto", "Arial", "Tahoma", "Noto Sans", "DejaVu Sans"]:
                 path = pygame.font.match_font(name, bold=bold)
                 if path:
                     return pygame.font.Font(path, size)
@@ -78,8 +97,8 @@ class GameBoard:
         self.screen.fill(config.BG_COLOR)
         self.screen.blit(self.board_img, (config.BOARD_X, config.BOARD_Y))
 
-        # ✨ Vẽ vệt nước đi trước
-        self._draw_last_move_trail()
+        # ✨ Vẽ các vệt nước đi gần nhất (ưu tiên history; nếu lịch sử trống dùng last_move cho tương thích)
+        self._draw_move_trails()
 
         # Vẽ các nước đi hợp lệ
         r = max(4, int(min(self.board_img.get_width() / config.BOARD_COLS,
@@ -100,28 +119,39 @@ class GameBoard:
 
         self.draw_grid()
 
-    def _draw_last_move_trail(self):
-        if not self.last_move:
+    def _draw_move_trails(self):
+        """Vẽ nhiều vệt gần nhất; nếu không có lịch sử thì fallback last_move."""
+        trails = list(self.move_history[-self.max_traces:]) if self.move_history else ([self.last_move] if self.last_move else [])
+        if not trails:
             return
 
-        (sx, sy), (ex, ey) = self.last_move
-        x1, y1 = self.to_pixel(sx, sy)
-        x2, y2 = self.to_pixel(ex, ey)
+        # Vệt mới nhất nổi bật hơn
+        for idx, mv in enumerate(trails):
+            if not mv:
+                continue
+            (sx, sy), (ex, ey) = mv
+            x1, y1 = self.to_pixel(sx, sy)
+            x2, y2 = self.to_pixel(ex, ey)
 
-        # Màu vệt
-        trail_col = (220, 60, 60)
+            # màu giảm dần theo độ cũ (mới nhất -> sáng hơn)
+            # base đỏ, nhạt dần
+            age = len(trails) - 1 - idx
+            base = 220 - age * 35
+            base = max(80, base)
+            trail_col = (base, 60, 60)
 
-        # Vẽ các chấm nhỏ theo đoạn đường
-        steps = max(1, int(((x1 - x2)**2 + (y1 - y2)**2)**0.5 // 22))
-        for i in range(1, steps):
-            t = i / steps
-            px = int(x1 + (x2 - x1) * t)
-            py = int(y1 + (y2 - y1) * t)
-            pygame.draw.circle(self.screen, trail_col, (px, py), 3)
+            # số bước chấm
+            steps = max(1, int(((x1 - x2)**2 + (y1 - y2)**2)**0.5 // 22))
+            for i in range(1, steps):
+                t = i / steps
+                px = int(x1 + (x2 - x1) * t)
+                py = int(y1 + (y2 - y1) * t)
+                pygame.draw.circle(self.screen, trail_col, (px, py), 3)
 
-        # Vẽ vòng tròn ở đầu và cuối
-        pygame.draw.circle(self.screen, trail_col, (int(x1), int(y1)), 10, 2)
-        pygame.draw.circle(self.screen, trail_col, (int(x2), int(y2)), 10, 2)
+            # vòng tròn ở đầu và cuối
+            ring_w = 2 if idx < len(trails)-1 else 3
+            pygame.draw.circle(self.screen, trail_col, (int(x1), int(y1)), 10, ring_w)
+            pygame.draw.circle(self.screen, trail_col, (int(x2), int(y2)), 10, ring_w)
 
     # ----------------- vẽ quân -----------------
     def draw_piece(self, x, y, color, text, bg_color, dim=False):
@@ -166,7 +196,7 @@ class GameBoard:
             (config.BOARD_X, config.BOARD_Y + config.BOARD_HEIGHT + 30),
         )
 
-    # ----------------- timer dạng "button" -----------------
+    # ----------------- timer dạng "dải ngang" -----------------
     def _timer_button(self, rect, title, seconds, color, active):
         bg_idle = (60, 45, 28)
         bg_act  = (78, 58, 36)
@@ -212,7 +242,6 @@ class GameBoard:
         # Vẽ mũi tên chỉ lượt đi
         arrow_size = 20
         center_y = bar_height // 2
-        arrow_x_offset = 100  # khoảng cách từ mép vào
 
         if red_turn:
             arrow_points = [
