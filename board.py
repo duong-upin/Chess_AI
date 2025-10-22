@@ -187,14 +187,44 @@ class GameBoard:
         time_surf = time_font.render(time_text, True, (255, 255, 255))
         self.screen.blit(time_surf, time_surf.get_rect(midbottom=(rect[0] + rect[2] // 2, rect[1] + rect[3] - 8)))
 
-    def draw_timer(self, red_time, black_time, red_turn):
-        btn_w, btn_h = 160, 70
-        left_x  = config.BOARD_X - btn_w - 16
-        right_x = config.BOARD_X + config.BOARD_WIDTH + 16
-        mid_y   = config.BOARD_Y + config.BOARD_HEIGHT // 2
+    def draw_timer(self, rt, bt, red_turn):
+        font = pygame.font.SysFont(None, 30)
 
-        black_rect = pygame.Rect(right_x, mid_y - btn_h - 8, btn_w, btn_h)
-        red_rect   = pygame.Rect(left_x,  mid_y + 8,        btn_w, btn_h)
+        def fmt_time(t):
+            m = int(t // 60)
+            s = int(t % 60)
+            return f"{m:02}:{s:02}"
 
-        self._timer_button(black_rect, "BLACK", black_time, config.BLACK, (not red_turn))
-        self._timer_button(red_rect,   "RED",   red_time,   config.RED,   red_turn)
+        # Khung timer trên cùng
+        bar_height = 60
+        pygame.draw.rect(self.screen, (40, 30, 20), (0, 0, config.SCREEN_WIDTH, bar_height))
+
+        # Render text
+        red_text = font.render(f"Red: {fmt_time(rt)} s", True, (255, 120, 120))
+        black_text = font.render(f"Black: {fmt_time(bt)} s", True, (120, 120, 255))
+
+        # Vị trí trái - phải
+        margin = 40
+        y_pos = (bar_height - red_text.get_height()) // 2
+        self.screen.blit(red_text, (margin, y_pos))
+        self.screen.blit(black_text, (config.SCREEN_WIDTH - black_text.get_width() - margin, y_pos))
+
+        # Vẽ mũi tên chỉ lượt đi
+        arrow_size = 20
+        center_y = bar_height // 2
+        arrow_x_offset = 100  # khoảng cách từ mép vào
+
+        if red_turn:
+            arrow_points = [
+                (margin + red_text.get_width() + 15, center_y),
+                (margin + red_text.get_width() + 15 + arrow_size, center_y - arrow_size//2),
+                (margin + red_text.get_width() + 15 + arrow_size, center_y + arrow_size//2),
+            ]
+        else:
+            arrow_points = [
+                (config.SCREEN_WIDTH - margin - black_text.get_width() - 15, center_y),
+                (config.SCREEN_WIDTH - margin - black_text.get_width() - 15 - arrow_size, center_y - arrow_size//2),
+                (config.SCREEN_WIDTH - margin - black_text.get_width() - 15 - arrow_size, center_y + arrow_size//2),
+            ]
+
+        pygame.draw.polygon(self.screen, (255, 220, 120), arrow_points)

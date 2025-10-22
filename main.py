@@ -8,9 +8,23 @@ from timer_manager import TimerManager
 from captured_pieces import CapturedPieces
 import random
 
-# =========================
-# MÀN HÌNH KẾT THÚC (UI đẹp)
-# =========================
+
+def wrap_text(text, font, max_width):
+    words = text.split(' ')
+    lines = []
+    current_line = ""
+
+    for word in words:
+        test_line = current_line + (" " if current_line else "") + word
+        if font.size(test_line)[0] <= max_width:
+            current_line = test_line
+        else:
+            lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines
+
 def draw_game_over_ui(screen, winner_text, loser_text):
     import pygame
     import config
@@ -69,6 +83,16 @@ def draw_game_over_ui(screen, winner_text, loser_text):
 
     # ===== XỬ LÝ EVENT =====
     for event in pygame.event.get():
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if setting_rect.collidepoint(mx, my):
+                choice = in_game_setting(screen, sound)
+                if choice == "MENU":
+                    return "MENU", None
+                elif choice == "DRAW":
+                    red_turn = not red_turn
+                    timer.switch_turn()
+
         if event.type == pygame.QUIT:
             return "QUIT"
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -306,6 +330,68 @@ def setting(screen, sound: SoundManager):
 
         pygame.display.flip()
         clock.tick(60)
+        def in_game_setting(screen, sound: "SoundManager"):
+            """Hiển thị menu cài đặt khi đang chơi."""
+            clock = pygame.time.Clock()
+            title_font = pygame.font.SysFont(None, 38)
+            btn_font   = pygame.font.SysFont(None, 28)
+
+            # Thanh trượt volume
+            slider_rect = pygame.Rect(200, 180, max(300, config.SCREEN_WIDTH - 400), 8)
+            slider_hit = slider_rect.inflate(0, 24)
+
+            btn_w, btn_h = 260, 50
+            bx = (config.SCREEN_WIDTH - btn_w) // 2
+            rect_back  = (bx, 260, btn_w, btn_h)
+            rect_draw  = (bx, 330, btn_w, btn_h)
+            rect_close = (bx, 400, btn_w, btn_h)
+
+            pygame.event.clear(pygame.MOUSEBUTTONDOWN)
+            dragging = False
+
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        return "MENU"
+
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        mx, my = event.pos
+                        if slider_hit.collidepoint(mx, my):
+                            dragging = True
+                            ratio = (mx - slider_rect.x) / slider_rect.width
+                            sound.set_volume(ratio)
+                        elif pygame.Rect(rect_back).collidepoint(mx, my):
+                            return "MENU"
+                        elif pygame.Rect(rect_draw).collidepoint(mx, my):
+                            return "DRAW"
+                        elif pygame.Rect(rect_close).collidepoint(mx, my):
+                            return "CLOSE"
+
+                    elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                        dragging = False
+
+                    elif event.type == pygame.MOUSEMOTION and dragging:
+                        mx, my = event.pos
+                        mx = max(slider_rect.x, min(slider_rect.x + slider_rect.width, mx))
+                        ratio = (mx - slider_rect.x) / slider_rect.width
+                        sound.set_volume(ratio)
+
+                screen.fill((26, 18, 10))
+                draw_center_text(screen, "IN-GAME SETTINGS", 100, title_font)
+                draw_center_text(screen, f"Volume: {int(sound.volume * 100)}%", 150, btn_font, (220, 200, 160))
+
+                # slider
+                pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
+                knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
+                pygame.draw.circle(screen, (200, 180, 140), (knob_x, slider_rect.y + slider_rect.height // 2), 12)
+
+                button(screen, rect_back, "🏠 Back to Main Menu", btn_font)
+                button(screen, rect_draw, "🤝 Hoãn nước đi", btn_font)
+                button(screen, rect_close, "✖ Tiếp tục chơi", btn_font)
+
+                pygame.display.flip()
+                clock.tick(60)
+
 
 # =========================
 # CHẾ ĐỘ CHƠI (VS AI / 2P) – phục vụ cho main và xd
@@ -322,7 +408,6 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
     Trả về: ('MENU'|'QUIT'|'AGAIN', loser_is_human_bool_or_None)
     """
     clock = pygame.time.Clock()
-    # ở đầu file nhớ: import random
     ai_thinking = False
     ai_think_start = 0
     ai_think_ms = 0
@@ -518,6 +603,41 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
         captured.draw_captured_pieces()
         rt, bt = timer.get_times()
         board.draw_timer(rt, bt, red_turn)
+        # Vẽ nút Setting góc trên phải
+        setting_btn_size = 40
+        setting_rect = pygame.Rect(config.SCREEN_WIDTH - setting_btn_size - 15, 10, setting_btn_size, setting_btn_size)
+
+        # Tăng vùng click lên rộng hơn
+        setting_hitbox = setting_rect.inflate(20, 20)  # 👈 vùng click rộng hơn để dễ ấn
+
+        pygame.draw.rect(screen, (80, 60, 40), setting_rect, border_radius=8)
+
+        # Vẽ 3 gạch ngang
+        line_color = (255, 220, 120)
+        line_width = 3
+        gap = 8
+        start_x = setting_rect.x + 8
+        end_x = setting_rect.x + setting_rect.width - 8
+        center_y = setting_rect.y + setting_rect.height // 2
+        pygame.draw.line(screen, line_color, (start_x, center_y - gap), (end_x, center_y - gap), line_width)
+        pygame.draw.line(screen, line_color, (start_x, center_y), (end_x, center_y), line_width)
+        pygame.draw.line(screen, line_color, (start_x, center_y + gap), (end_x, center_y + gap), line_width)
+
+
+        # Vẽ 3 gạch ngang
+        line_color = (255, 220, 120)
+        line_width = 3
+        gap = 8  # khoảng cách giữa các gạch
+        start_x = setting_rect.x + 8
+        end_x = setting_rect.x + setting_rect.width - 8
+        center_y = setting_rect.y + setting_rect.height // 2
+
+        # 3 đường: trên - giữa - dưới
+        pygame.draw.line(screen, line_color, (start_x, center_y - gap), (end_x, center_y - gap), line_width)
+        pygame.draw.line(screen, line_color, (start_x, center_y),       (end_x, center_y),       line_width)
+        pygame.draw.line(screen, line_color, (start_x, center_y + gap), (end_x, center_y + gap), line_width)
+
+
 
 
         # ===== MÀN HÌNH KẾT THÚC (UI ĐẸP + NÚT) =====
@@ -721,10 +841,15 @@ def guide(screen):
         screen.fill((28, 20, 12))
         draw_center_text(screen, "Instructions", 90, title_font)
         y = 150
+        max_text_width = config.SCREEN_WIDTH - 120  # chừa lề trái phải
         for line in lines:
-            surf = body_font.render(line, True, (230, 210, 180))
-            screen.blit(surf, (60, y))
-            y += 28
+            wrapped_lines = wrap_text(line, body_font, max_text_width)
+            for wrapped in wrapped_lines:
+                surf = body_font.render(wrapped, True, (230, 210, 180))
+                screen.blit(surf, (60, y))
+                y += 28
+            y += 4  # khoảng cách giữa các đoạn
+
 
         rect_back = ((config.SCREEN_WIDTH - 220)//2, y + 30, 220, 56)
         button(screen, rect_back, "Back to Main Menu", btn_font)
@@ -752,7 +877,7 @@ def main():
 
     while True:
         mode, human_is_red, ai_depth = xd(screen, sound)
-        if mode in ("AI", "2P", "SETTINGS", "GUIDE"):
+        if mode in ("AI", "2P"):
             pygame.mixer.music.pause()
 
         if mode == "QUIT":
