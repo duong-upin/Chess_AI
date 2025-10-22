@@ -124,10 +124,12 @@ def button(screen, rect, text, font, bg=(90, 60, 20), fg=(255, 255, 255),
 class SoundManager:
     def __init__(self):
         self.volume = 0.6
-        self.click = None
+        self.click = None               # âm bấm nút UI (giữ nguyên)
+        self.select = None              # âm chọn quân
+        self.move = None                # âm di chuyển quân
         self.capture_default = None
-        self.capture_map = {}  # map ký tự quân -> âm ăn quân
-        self.per_piece_sound = True  # bật/tắt bonus “mỗi loại quân 1 âm”
+        self.capture_map = {}
+        self.per_piece_sound = True
         try:
             pygame.mixer.init()
         except Exception:
@@ -143,21 +145,22 @@ class SoundManager:
             return None
 
     def _load_sounds(self):
-        self.click = self._safe_load("assets/sounds/click.wav")
+        # UI click
+        self.click  = self._safe_load("assets/sounds/click.wav")
+        # âm mới:
+        self.select = self._safe_load("assets/sounds/select.wav") or self.click
+        self.move   = self._safe_load("assets/sounds/move.wav")   or self.click
+
         self.capture_default = self._safe_load("assets/sounds/capture_default.wav")
 
         def cap(path):
             return self._safe_load(path) or self.capture_default
 
-        # Map theo chữ Trung (đổi/giảm bớt tùy file bạn có)
         self.capture_map = {
-            # Xe
             "車": cap("assets/sounds/capture_rook.wav"),
             "俥": cap("assets/sounds/capture_rook.wav"),
-            # Mã
             "馬": cap("assets/sounds/capture_knight.wav"),
             "傌": cap("assets/sounds/capture_knight.wav"),
-            # Tượng / Tướng sĩ / Pháo / Tốt
             "象": cap("assets/sounds/capture_bishop.wav"),
             "相": cap("assets/sounds/capture_bishop.wav"),
             "士": cap("assets/sounds/capture_guard.wav"),
@@ -173,16 +176,32 @@ class SoundManager:
 
     def set_volume(self, v):
         self.volume = max(0.0, min(1.0, v))
-        if self.click: self.click.set_volume(self.volume)
-        if self.capture_default: self.capture_default.set_volume(self.volume)
+        for s in [self.click, self.select, self.move, self.capture_default]:
+            if s: s.set_volume(self.volume)
         for s in self.capture_map.values():
             if s: s.set_volume(self.volume)
 
+    # UI click (giữ để dùng cho nút menu)
     def play_click(self):
         if self.click:
             try: self.click.play()
             except Exception: pass
 
+    # ✅ âm khi chọn quân
+    def play_select(self):
+        s = self.select or self.click
+        if s:
+            try: s.play()
+            except Exception: pass
+
+    # ✅ âm khi di chuyển quân (không ăn)
+    def play_move(self):
+        s = self.move or self.click
+        if s:
+            try: s.play()
+            except Exception: pass
+
+    # đã có sẵn – khi ăn quân
     def play_capture(self, captured_piece_char):
         if not self.per_piece_sound:
             s = self.capture_default
@@ -351,46 +370,51 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                     valid_moves = MoveValidator.generate_valid_moves(
                         pieces[selected], selected, pieces, other
                     )
-                elif selected and (gx, gy) in valid_moves:
-                    # Ăn quân
-                    if (gx, gy) in other:
-                        captured_piece = other.pop((gx, gy))
-                        captured.add_captured_piece(captured_piece, red_turn)
-                        sound.play_capture(captured_piece)
+                    sound.play_select()   #
+            elif selected and (gx, gy) in valid_moves:
+                # Ăn quân
+                if (gx, gy) in other:
+                    attacker_piece = pieces[selected]          # quân đang ăn
+                    captured_piece = other.pop((gx, gy))       # quân bị ăn
+                    captured.add_captured_piece(captured_piece, red_turn)
+                    sound.play_capture(attacker_piece)         # phát âm thanh theo quân đang ăn          # ✓ âm ăn quân
 
-                        # Ăn vua -> kết thúc
-                        if captured_piece in ["將", "帥"]:
-                            if captured_piece == "將":  # ăn Vua đen
-                                winner_text = "YOU WIN"
-                                loser_text  = "YOU LOSE"
-                                loser_is_human = (ai is None) or (not human_is_red)
-                            else:                        # ăn Soái đỏ
-                                winner_text = "YOU WIN" if not red_turn else "YOU WIN"
-                                # ở đây vẫn hiển thị YOU WIN / YOU LOSE
-                                loser_text  = "YOU LOSE"
-                                loser_is_human = (ai is None) or (human_is_red)
-                            board.last_move = (selected, (gx, gy))
-                            
-                            pieces[(gx, gy)] = pieces.pop(selected)
-                            playing = False
-                        else:
-                            # Di chuyển bình thường sau khi ăn
-                            pieces[(gx, gy)] = pieces.pop(selected)
-                            selected = None
-                            valid_moves = []
-                            red_turn = not red_turn
-                            timer.switch_turn()
-                            turn_count += 1
-                            continue  # quay lại loop
+                    # Ăn vua -> kết thúc
+                    if captured_piece in ["將", "帥"]:
+                        if captured_piece == "將":  # ăn Vua đen
+                            winner_text = "YOU WIN"
+                            loser_text  = "YOU LOSE"
+                            loser_is_human = (ai is None) or (not human_is_red)
+                        else:                        # ăn Soái đỏ
+                            winner_text = "YOU WIN"
+                            loser_text  = "YOU LOSE"
+                            loser_is_human = (ai is None) or (human_is_red)
 
-                    if playing:
-                        # Di chuyển thường
+                        board.last_move = (selected, (gx, gy))   # ✓ trace
                         pieces[(gx, gy)] = pieces.pop(selected)
+                        playing = False
+
+                    else:
+                        # Di chuyển xong sau khi ăn
+                        pieces[(gx, gy)] = pieces.pop(selected)
+                        board.last_move = (selected, (gx, gy))    # ✓ trace
                         selected = None
                         valid_moves = []
                         red_turn = not red_turn
                         timer.switch_turn()
                         turn_count += 1
+                        continue
+
+                if playing:
+                    # Di chuyển thường (không ăn)
+                    pieces[(gx, gy)] = pieces.pop(selected)
+                    board.last_move = (selected, (gx, gy))        # ✓ trace
+                    sound.play_move()                             # ← THÊM DÒNG NÀY (âm di chuyển)
+                    selected = None
+                    valid_moves = []
+                    red_turn = not red_turn
+                    timer.switch_turn()
+                    turn_count += 1
 
         # ===== UPDATE TIMER =====
         if playing:
@@ -430,9 +454,11 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                     if s in pieces:
                         # Ăn quân
                         if e in other:
+                            attacker_piece = pieces[s]   # quân AI đi
                             cap = other.pop(e)
                             captured.add_captured_piece(cap, ai.is_red)
-                            sound.play_capture(cap)
+                            sound.play_capture(attacker_piece)   # phát âm thanh theo quân đang ăn
+
                             if cap in ["將", "帥"]:
                                 winner_text = "YOU WIN"    # phía AI thắng; UI vẫn hiển thị YOU WIN / YOU LOSE
                                 loser_text  = "YOU LOSE"
@@ -446,6 +472,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                                 turn_count += 1
                         else:
                             pieces[e] = pieces.pop(s)
+                            sound.play_move()   
                             red_turn = not red_turn
                             timer.switch_turn()
                             turn_count += 1
