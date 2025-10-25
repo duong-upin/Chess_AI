@@ -331,67 +331,51 @@ def setting(screen, sound: SoundManager):
 
         pygame.display.flip()
         clock.tick(60)
-        def in_game_setting(screen, sound: "SoundManager"):
-            """Hiển thị menu cài đặt khi đang chơi."""
-            clock = pygame.time.Clock()
-            title_font = pygame.font.SysFont(None, 38)
-            btn_font   = pygame.font.SysFont(None, 28)
+def in_game_setting(screen, sound: "SoundManager"):
+    """Hiển thị menu cài đặt và các tùy chọn trong trận đấu."""
+    clock = pygame.time.Clock()
+    title_font = get_vn_font(38, bold=True)
+    btn_font = get_vn_font(28)
 
-            # Thanh trượt volume
-            slider_rect = pygame.Rect(200, 180, max(300, config.SCREEN_WIDTH - 400), 8)
-            slider_hit = slider_rect.inflate(0, 24)
+    # Tọa độ các nút
+    btn_w, btn_h, gap = 320, 55, 18
+    bx = (config.SCREEN_WIDTH - btn_w) // 2
+    
+    rect_close     = (bx, 220, btn_w, btn_h)
+    rect_surrender = (bx, rect_close[1] + btn_h + gap, btn_w, btn_h)
+    rect_draw      = (bx, rect_surrender[1] + btn_h + gap, btn_w, btn_h)
+    rect_menu      = (bx, rect_draw[1] + btn_h + gap, btn_w, btn_h)
 
-            btn_w, btn_h = 260, 50
-            bx = (config.SCREEN_WIDTH - btn_w) // 2
-            rect_back  = (bx, 260, btn_w, btn_h)
-            rect_draw  = (bx, 330, btn_w, btn_h)
-            rect_close = (bx, 400, btn_w, btn_h)
+    pygame.event.clear(pygame.MOUSEBUTTONDOWN) # Xóa các sự kiện click cũ
 
-            pygame.event.clear(pygame.MOUSEBUTTONDOWN)
-            dragging = False
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "MENU" 
 
-            while True:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        return "MENU"
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                sound.play_click()
+                if pygame.Rect(rect_close).collidepoint(mx, my):
+                    return "CLOSE"
+                elif pygame.Rect(rect_surrender).collidepoint(mx, my):
+                    return "SURRENDER" # Giá trị trả về mới cho việc đầu hàng
+                elif pygame.Rect(rect_draw).collidepoint(mx, my):
+                    return "DRAW"
+                elif pygame.Rect(rect_menu).collidepoint(mx, my):
+                    return "MENU"
 
-                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        mx, my = event.pos
-                        if slider_hit.collidepoint(mx, my):
-                            dragging = True
-                            ratio = (mx - slider_rect.x) / slider_rect.width
-                            sound.set_volume(ratio)
-                        elif pygame.Rect(rect_back).collidepoint(mx, my):
-                            return "MENU"
-                        elif pygame.Rect(rect_draw).collidepoint(mx, my):
-                            return "DRAW"
-                        elif pygame.Rect(rect_close).collidepoint(mx, my):
-                            return "CLOSE"
+        # Vẽ giao diện
+        screen.fill((26, 18, 10, 220)) # Nền mờ
+        draw_center_text(screen, "TÙY CHỌN", 150, title_font)
 
-                    elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                        dragging = False
+        button(screen, rect_close, "Resume", btn_font)
+        button(screen, rect_surrender, "Surrender", btn_font)
+        button(screen, rect_draw, "Offer Draw", btn_font)
+        button(screen, rect_menu, "Quit Match", btn_font)
 
-                    elif event.type == pygame.MOUSEMOTION and dragging:
-                        mx, my = event.pos
-                        mx = max(slider_rect.x, min(slider_rect.x + slider_rect.width, mx))
-                        ratio = (mx - slider_rect.x) / slider_rect.width
-                        sound.set_volume(ratio)
-
-                screen.fill((26, 18, 10))
-                draw_center_text(screen, "IN-GAME SETTINGS", 100, title_font)
-                draw_center_text(screen, f"Volume: {int(sound.volume * 100)}%", 150, btn_font, (220, 200, 160))
-
-                # slider
-                pygame.draw.rect(screen, (70, 50, 30), slider_rect, border_radius=8)
-                knob_x = int(slider_rect.x + slider_rect.width * sound.volume)
-                pygame.draw.circle(screen, (200, 180, 140), (knob_x, slider_rect.y + slider_rect.height // 2), 12)
-
-                button(screen, rect_back, "🏠 Back to Main Menu", btn_font)
-                button(screen, rect_draw, "🤝 Hoãn nước đi", btn_font)
-                button(screen, rect_close, "✖ Tiếp tục chơi", btn_font)
-
-                pygame.display.flip()
-                clock.tick(60)
+        pygame.display.flip()
+        clock.tick(60)
 
 
 # =========================
@@ -441,12 +425,84 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
     loser_text       = ""
     loser_is_human   = None
     playing          = True
+    game_state_history = [] # Lưu trạng thái của trận đấu
+
+    def save_current_state():
+        state = {
+            "red_pieces": red_pieces.copy(),
+            "black_pieces": black_pieces.copy(),
+            "red_turn": red_turn,
+            "captured_red": captured.red_captured.copy(),
+            "captured_black": captured.black_captured.copy(),
+            "timers": timer.get_times()
+        }
+        game_state_history.append(state)
+
+    # Kiểm tra nước chiếu hết/hòa cờ
+    def check_for_game_over():
+        nonlocal playing, winner_text, loser_text, loser_is_human
+
+        current_pieces = red_pieces if red_turn else black_pieces
+        opponent_pieces = black_pieces if red_turn else red_pieces
+
+        all_possible_moves = []
+        for pos, piece in current_pieces.items():
+            moves = MoveValidator.generate_valid_moves(piece, pos, current_pieces, opponent_pieces)
+            if moves:
+                all_possible_moves.extend(moves)
+
+        if not all_possible_moves:
+            king_pos = next((p for p, piece in current_pieces.items() if piece in ["帥", "將"]), None)
+            
+            playing = False
+            if king_pos and MoveValidator.is_king_in_check(king_pos, current_pieces, opponent_pieces):
+                if red_turn:
+                    winner_text = "BLACK WIN"
+                    loser_text = "Checkmate"
+                    loser_is_human = None
+                else:
+                    winner_text = "RED WIN"
+                    loser_text = "Checkmate"
+                    loser_is_human = (ai is None) or (human_is_red is False)
+            else:
+                playing = False
+                winner_text = "DRAW"
+                loser_text = "Stalemate"
+                loser_is_human = None
 
     while True:
         # ===== EVENT =====
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return "QUIT", None
+            
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_BACKSPACE and playing:
+                    if game_state_history:
+                        # Lùi lại 1 bước cho người chơi
+                        last_state = game_state_history.pop()
+                        
+                        # Nếu đang chơi với AI, lùi lại thêm 1 bước của AI
+                        if ai is not None and game_state_history:
+                             last_state = game_state_history.pop()
+
+                        # Khôi phục trạng thái
+                        red_pieces = last_state["red_pieces"]
+                        black_pieces = last_state["black_pieces"]
+                        red_turn = last_state["red_turn"]
+                        captured.red_captured = last_state["captured_red"]
+                        captured.black_captured = last_state["captured_black"]
+                        
+                        # Khôi phục timer (giả định bạn có hàm set_times)
+                        rt, bt = last_state["timers"]
+                        timer.red_time = rt
+                        timer.black_time = bt
+                        
+                        # Reset lựa chọn
+                        selected = None
+                        valid_moves = []
+                        board.last_move = None
+                        sound.play_move() # Phát âm thanh để báo hiệu đã lùi lại
 
             elif event.type == pygame.VIDEORESIZE:
                 config.SCREEN_WIDTH, config.SCREEN_HEIGHT = event.size
@@ -454,85 +510,89 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                 board.screen = screen
                 captured.screen = screen
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and playing:
-                sound.play_click()
-                x, y = pygame.mouse.get_pos()
-
-                # Tăng độ "dễ click": làm tròn về ô gần nhất
-                gx = round((x - config.BOARD_X) / config.CELL_SIZE)
-                gy = round((y - config.BOARD_Y) / config.CELL_SIZE)
-
-                # Ngoài bàn cờ thì bỏ
-                if gx < 0 or gx >= 9 or gy < 0 or gy >= 10:
-                    continue
-
-                # Nếu có AI: chỉ thao tác khi là lượt của người
-                if ai is not None:
-                    is_human_turn = (human_is_red and red_turn) or ((not human_is_red) and (not red_turn))
-                    if not is_human_turn:
+            # THAY THẾ BẰNG TOÀN BỘ KHỐI NÀY
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                
+                # 1. Ưu tiên kiểm tra click vào nút setting
+                if setting_hitbox.collidepoint(mx, my):
+                    choice = in_game_setting(screen, sound)
+                    if choice == "MENU":
+                        return "MENU", None
+                    elif choice == "CLOSE":
+                        continue
+                    elif choice == "SURRENDER":
+                        playing = False
+                        if red_turn:
+                            winner_text, loser_text, loser_is_human = "BLACK WINS", "Red Surrendered", (ai is None) or human_is_red
+                        else:
+                            winner_text, loser_text, loser_is_human = "RED WINS", "Black Surrendered", (ai is None) or not human_is_red
+                        continue
+                    elif choice == "DRAW":
+                        playing = False
+                        winner_text, loser_text, loser_is_human = "DRAW", "By Agreement", None
                         continue
 
-                # Tập quân theo lượt
-                pieces = red_pieces if red_turn else black_pieces
-                other  = black_pieces if red_turn else red_pieces
+                # 2. Nếu game đang diễn ra, xử lý logic cờ
+                if playing:
+                    gx = round((mx - config.BOARD_X) / config.CELL_SIZE)
+                    gy = round((my - config.BOARD_Y) / config.CELL_SIZE)
 
-                # Chọn quân hoặc đi quân
-                if (gx, gy) in pieces:
-                    selected = (gx, gy)
-                    valid_moves = MoveValidator.generate_valid_moves(
-                        pieces[selected], selected, pieces, other
-                    )
-                    sound.play_select()   #
-            elif selected and (gx, gy) in valid_moves:
-                # Ăn quân
-                if (gx, gy) in other:
-                    attacker_piece = pieces[selected]          # quân đang ăn
-                    captured_piece = other.pop((gx, gy))       # quân bị ăn
-                    captured.add_captured_piece(captured_piece, red_turn)
-                    sound.play_capture(attacker_piece)         # phát âm thanh theo quân đang ăn          # ✓ âm ăn quân
+                    if not (0 <= gx < 9 and 0 <= gy < 10):
+                        continue
 
-                    # Ăn vua -> kết thúc
-                    if captured_piece in ["將", "帥"]:
-                        if captured_piece == "將":  # ăn Vua đen
-                            winner_text = "YOU WIN"
-                            loser_text  = "YOU LOSE"
-                            loser_is_human = (ai is None) or (not human_is_red)
-                        else:                        # ăn Soái đỏ
-                            winner_text = "YOU WIN"
-                            loser_text  = "YOU LOSE"
-                            loser_is_human = (ai is None) or (human_is_red)
+                    if ai is not None:
+                        is_human_turn = (human_is_red and red_turn) or ((not human_is_red) and (not red_turn))
+                        if not is_human_turn:
+                            continue
+                    
+                    pieces = red_pieces if red_turn else black_pieces
+                    other = black_pieces if red_turn else red_pieces
 
-                        board.last_move = (selected, (gx, gy))   # ✓ trace
-                        pieces[(gx, gy)] = pieces.pop(selected)
-                        board.last_move = (selected, (gx, gy))
+                    # Nếu đã chọn quân và click vào ô hợp lệ
+                    if selected and (gx, gy) in valid_moves:
+                        save_current_state()
+                        sound.play_click()
+                        start_pos = selected
+                        end_pos = (gx, gy)
 
-                        playing = False
+                        # Ăn quân
+                        if end_pos in other:
+                            captured_piece = other.pop(end_pos)
+                            captured.add_captured_piece(captured_piece, red_turn)
+                            sound.play_capture(pieces[start_pos])
 
-                    else:
-                        # Di chuyển xong sau khi ăn
-                        pieces[(gx, gy)] = pieces.pop(selected)
-                        board.last_move = (selected, (gx, gy))
+                            if captured_piece in ["將", "帥"]:
+                                playing = False
+                                winner_text = "RED WINS" if red_turn else "BLACK WINS"
+                                loser_text = "Checkmate!"
+                                loser_is_human = (ai is None) or (red_turn != human_is_red)
+                        # Di chuyển thường
+                        else:
+                            sound.play_move()
+                        
+                        # Thực hiện di chuyển
+                        pieces[end_pos] = pieces.pop(start_pos)
+                        board.last_move = (start_pos, end_pos)
 
-                        board.last_move = (selected, (gx, gy))    # ✓ trace
+                        # Đổi lượt và reset
                         selected = None
                         valid_moves = []
                         red_turn = not red_turn
                         timer.switch_turn()
                         turn_count += 1
-                        continue
+                        check_for_game_over()
 
-                if playing:
-                    # Di chuyển thường (không ăn)
-                    pieces[(gx, gy)] = pieces.pop(selected)
-                    board.last_move = (selected, (gx, gy))
-
-                    board.last_move = (selected, (gx, gy))        # ✓ trace
-                    sound.play_move()                             # ← THÊM DÒNG NÀY (âm di chuyển)
-                    selected = None
-                    valid_moves = []
-                    red_turn = not red_turn
-                    timer.switch_turn()
-                    turn_count += 1
+                    # B. Nếu click vào quân của mình để chọn
+                    elif (gx, gy) in pieces:
+                        sound.play_select()
+                        selected = (gx, gy)
+                        valid_moves = MoveValidator.generate_valid_moves(pieces[selected], selected, pieces, other)
+                    
+                    # C. Nếu click vào ô không hợp lệ
+                    else:
+                        selected = None
+                        valid_moves = []  
 
         # ===== UPDATE TIMER =====
         if playing:
@@ -574,6 +634,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                     ai_thinking = False  # reset
 
                     if move:
+                        save_current_state()
                         s, e = move
                         sound.play_select()
                         selected = s
@@ -619,6 +680,7 @@ def run_match(screen, sound: SoundManager, human_is_red: bool | None, ai_depth: 
                                 red_turn = not red_turn
                                 timer.switch_turn()
                                 turn_count += 1
+                                check_for_game_over()
 
 
         # ===== VẼ BÀN + TIMER =====

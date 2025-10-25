@@ -5,6 +5,8 @@ class MoveValidator:
         for pos, piece in other_pieces.items():
             if MoveValidator.is_valid_move(piece, pos, king_pos, other_pieces, pieces):
                 return True  # Có ít nhất một quân đang chiếu tướng
+        if MoveValidator.are_kings_facing(pieces, other_pieces):
+            return True
         return False
 
     @staticmethod
@@ -103,16 +105,57 @@ class MoveValidator:
             if new_pos in other_pieces:  # Ăn quân
                 return count == 1  # Phải có đúng 1 quân cản
             return count == 0  # Đi thường thì không được có quân cản
-        temp_pieces = pieces.copy()
-        temp_other_pieces = other_pieces.copy()
-        temp_pieces.pop(current_pos)
-        temp_pieces[new_pos] = piece
+        
+        final_valid_moves = []
+        king_pos = next((pos for pos, p in pieces.items() if p in ["帥", "將"]), None)
 
-        king_pos = next(pos for pos, p in temp_pieces.items() if p in ["帥", "將"])
-        if MoveValidator.is_king_in_check(king_pos, temp_pieces, temp_other_pieces):
-            return False  # Nước đi này khiến tướng bị chiếu
+        if king_pos is None: # Không tìm thấy Tướng, có thể là lỗi
+            return valid_moves
 
-        return True  # Nếu không bị chiếu, nước đi hợp lệ
+        for move in valid_moves:
+            # Tạo bản sao để mô phỏng nước đi
+            temp_pieces = pieces.copy()
+            temp_other_pieces = other_pieces.copy()
+
+            # Di chuyển quân
+            moved_piece = temp_pieces.pop(current_pos)
+            temp_pieces[move] = moved_piece
+
+            # Xóa quân đối phương nếu bị ăn
+            if move in temp_other_pieces:
+                temp_other_pieces.pop(move)
+
+            # Cập nhật vị trí Tướng nếu Tướng di chuyển
+            current_king_pos = move if current_pos == king_pos else king_pos
+
+            # Nếu nước đi không làm Tướng bị chiếu, thì mới thêm vào danh sách cuối cùng
+            if not MoveValidator.is_king_in_check(current_king_pos, temp_pieces, temp_other_pieces):
+                final_valid_moves.append(move)
+
+        return final_valid_moves
+    @staticmethod
+    def are_kings_facing(pieces, other_pieces):
+        #Kiểm tra xem hai tướng có đối mặt nhau không
+        #Tìm vị trí hai tướng
+        try:
+            king_pos = next(pos for pos, p in pieces.items() if p in ["帥", "將"])
+            other_king_pos = next(pos for pos, p in other_pieces.items() if p in ["帥", "將"])
+        except StopIteration:
+            return False #Nếu không tìm thấy tướng thì bỏ qua
+        
+        #Nếu không cùng cột, chắc chắn không lộ mặt
+        if king_pos[0] != other_king_pos[0]:
+            return False
+        
+        #Kiểm tra xem có quân nào cản không
+        start_y = min(king_pos[1], other_king_pos[1])
+        end_y = max(king_pos[1], other_king_pos[1])
+
+        for y in range(start_y + 1, end_y):
+            if (king_pos[0], y) in pieces or (king_pos[0], y) in other_pieces:
+                return False #Có quân cản -> Không lộ mặt
+            
+        return True
 
     @staticmethod
     def generate_valid_moves(piece, current_pos, pieces, other_pieces):
@@ -170,11 +213,24 @@ class MoveValidator:
                             valid_moves.append((x, new_y))
 
         elif piece in ["帥", "將"]:
-            moves_to_check = [(x + i, y + j) for i in [-1, 0, 1] for j in [-1, 0, 1] if abs(i) + abs(j) == 1]
-            for new_x, new_y in moves_to_check:
-                if 0 <= new_x < 9 and 0 <= new_y < 10:
-                    if MoveValidator.is_valid_move(piece, current_pos, (new_x, new_y), pieces, other_pieces):
-                        valid_moves.append((new_x, new_y))
+            potential_moves = [(x + dx, y + dy) for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]]
+
+            for new_pos in potential_moves:
+                new_x, new_y = new_pos
+
+                # Kiểm tra xem Tướng có trong cung không
+                if not (0 <= new_x < 9 and 0 <= new_y < 10):
+                    continue
+                if not MoveValidator.is_valid_move(piece, current_pos, new_pos, pieces, other_pieces):
+                    continue
+
+                # Tạo trạng thái bàn cờ giả định sau khi tướng di chuyển
+                temp_pieces = pieces.copy()
+                temp_pieces[new_pos] = temp_pieces.pop(current_pos)
+
+                # Kiểm tra xem ở vị trí mới, Tướng có bị chiếu không
+                if not MoveValidator.is_king_in_check(new_pos, temp_pieces, other_pieces):
+                    valid_moves.append(new_pos)
 
         elif piece in ["士", "仕"]:
             moves_to_check = [(x + i, y + j) for i in [-1, 1] for j in [-1, 1]]
